@@ -1,0 +1,240 @@
+name: Release (signed APK)
+
+# ============================================================================
+# ReleaseKite 通用发布模板（复制到宿主仓库 .github/workflows/release.yml 后使用）
+#
+# 触发：推送 v* tag → 校验 tag 与 versionName → 用 Secrets 中的 release keystore
+#       签名构建 → apksigner/aapt2 校验 → 产物重命名 + .sha256 +（可选）-update.json →
+#       gh release create（tag 含 "-" 自动 --prerelease）
+#
+# -update.json 是可选的：UPDATE_POLICY_FILE 不存在时跳过生成并告警（客户端按 100%/非强制）。
+#
+# 宿主需要修改的占位符（见下方 env）与 Secrets：
+#   RELEASE_STORE_BASE64     release keystore 的 base64（JKS/PKCS12 单文件）
+#   RELEASE_STORE_PASSWORD   keystore 口令
+#   RELEASE_KEY_ALIAS        key alias
+#   RELEASE_KEY_PASSWORD     key 口令
+#
+# 宿主 build.gradle.kts 需要把上述环境变量接到 signingConfig 上，例如：
+#   signingConfigs {
+#       create("release") {
+#           storeFile = file(System.getenv("RELEASE_STORE_FILE") ?: "missing-release.jks")
+#           storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+#           keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+#           keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+#       }
+#   }
+#   buildTypes { release { signingConfig = signingConfigs.getByName("release") } }
+#
+# 签名密钥是应用的长期身份：一旦客户端安装了某个签名的版本，后续更新必须用同一证书，
+# 否则 ReleaseKite 的 ApkValidator 会拒绝安装。keystore/口令只放 Secrets，必须离线备份。
+# ============================================================================
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # 创建 GitHub Release + 上传资产
+
+env:
+  # ===== 宿主占位符（按你的工程修改）=====
+  APP_MODULE: app                              # Gradle 子项目名（:app → app）
+  APP_NAME: myapp                              # 资产文件名前缀
+  APK_DIR: app/build/outputs/apk/release       # assembleRelease 输出目录
+  UPDATE_POLICY_FILE: release/update-policy.json
+  # 可选：指向「只包含当前版本段落」的发布说明文件；留空则用 GitHub 自动生成说明。
+  # 应用内更新弹窗展示的是 Release body，建议只放当前版本内容（历史全文会被客户端截断）。
+  RELEASE_NOTES_FILE: ''
+  JAVA_VERSION: '21'
+
+jobs:
+  signed-release:
+    name: Build & publish signed release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check tag matches versionName
+        run: |
+          set -euo pipefail
+          BUILD_FILE="${APP_MODULE}/build.gradle.kts"
+          [ -f "$BUILD_FILE" ] || { echo "::error::找不到 $BUILD_FILE（检查 env.APP_MODULE）"; exit 1; }
+          VERSION_NAME="$(grep -E '^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"' "$BUILD_FILE" \
+            | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          [ -n "$VERSION_NAME" ] || { echo "::error::无法从 $BUILD_FILE 读取 versionName（需形如 versionName = \"x.y.z\"）"; exit 1; }
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "$VERSION_NAME" ]; then
+            echo "::error::tag '$GITHUB_REF_NAME' 与 versionName '$VERSION_NAME' 不一致（应为 v$VERSION_NAME）"
+            exit 1
+          fi
+          echo "tag/version OK: $GITHUB_REF_NAME = $VERSION_NAME"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # 供应链校验：确认 gradle-wrapper.jar 与官方发布一致
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle with cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode release keystore
+        env:
+          RELEASE_STORE_BASE64: ${{ secrets.RELEASE_STORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          [ -n "${RELEASE_STORE_BASE64:-}" ] || { echo "::error::secret RELEASE_STORE_BASE64 未配置"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/release"
+          printf '%s' "$RELEASE_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/release/release.jks"
+          chmod 600 "$RUNNER_TEMP/release/release.jks"
+          echo "keystore decoded: $(stat -c%s "$RUNNER_TEMP/release/release.jks") bytes"
+
+      - name: Export signing env
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/release/release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for v in RELEASE_STORE_FILE RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            [ -n "${!v:-}" ] || { echo "::error::签名环境变量 $v 为空"; exit 1; }
+            printf '%s=%s\n' "$v" "${!v}" >> "$GITHUB_ENV"
+          done
+          echo "signing env exported"
+
+      - name: Build signed release
+        run: ./gradlew --no-daemon --stacktrace ":${APP_MODULE}:assembleRelease"
+
+      - name: Verify signature & manifest
+        run: |
+          set -euo pipefail
+          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*-release*.apk' | head -1)"
+          [ -n "$APK" ] || APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | head -1)"
+          [ -n "$APK" ] || { echo "::error::未找到签名 APK（$APK_DIR）；检查 signingConfig/Secrets"; ls -l "$APK_DIR" || true; exit 1; }
+          echo "APK=$APK"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+          [ -n "$BT" ] || { echo "::error::找不到 Android build-tools"; exit 1; }
+          echo "build-tools: $BT"
+          "$BT/apksigner" verify --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -q "SHA-256" /tmp/apksigner.txt || { echo "::error::apksigner 未输出证书 SHA-256（APK 未签名？）"; exit 1; }
+          BADGING="$("$BT/aapt2" dump badging "$APK")"
+          echo "$BADGING" | grep -m1 '^package:'
+          if echo "$BADGING" | grep -q "application-debuggable"; then
+            echo "::error::release APK 标记为 debuggable"; exit 1
+          fi
+          VERSION_NAME="${GITHUB_REF_NAME#v}"
+          if ! echo "$BADGING" | grep -m1 '^package:' | grep -q "versionName='${VERSION_NAME}'"; then
+            echo "::error::APK versionName 与 tag 不一致（期望 ${VERSION_NAME}）"; exit 1
+          fi
+
+      - name: Archive release artifacts
+        run: |
+          set -euo pipefail
+          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*-release*.apk' | head -1)"
+          [ -n "$APK" ] || APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | head -1)"
+          TAG="${GITHUB_REF_NAME#v}"
+          SHA7="$(git rev-parse --short=7 HEAD)"
+          OUT="dist/${APP_NAME}-${TAG}-${SHA7}-release-signed.apk"
+          mkdir -p dist
+          cp -f "$APK" "$OUT"
+          # .sha256 使用 sha256sum 标准格式（hash + 文件名）
+          sha256sum "$OUT" | sed 's|dist/||' > "$OUT.sha256"
+          # 可选：R8 mapping（无混淆 / 变体不同名时不存在，跳过即可）
+          MAPPING="${APP_MODULE}/build/outputs/mapping/release/mapping.txt"
+          if [ -f "$MAPPING" ]; then
+            cp -f "$MAPPING" "dist/${APP_NAME}-${TAG}-${SHA7}-mapping.txt"
+          fi
+          ls -l dist/
+          cat "$OUT.sha256"
+
+      - name: Generate update metadata
+        run: |
+          set -euo pipefail
+          # -update.json 是可选的：没有灰度/强制需求时可不放 policy 文件。
+          # 缺失时只告警并跳过，Release 仍会创建；客户端按 100%/非强制处理。
+          if [ ! -f "$UPDATE_POLICY_FILE" ]; then
+            echo "::warning::未找到 $UPDATE_POLICY_FILE，跳过 -update.json 生成（客户端按 100%/非强制处理）"
+            exit 0
+          fi
+          TAG="${GITHUB_REF_NAME#v}"
+          SHA7="$(git rev-parse --short=7 HEAD)"
+          APK="dist/${APP_NAME}-${TAG}-${SHA7}-release-signed.apk"
+          [ -f "$APK" ] || { echo "::error::缺少 APK：$APK"; exit 1; }
+          SHA256="$(cut -d' ' -f1 "${APK}.sha256")"
+          SIZE="$(stat -c%s "$APK")"
+          CHANNEL="stable"; if [[ "$TAG" == *-* ]]; then CHANNEL="beta"; fi
+          TAG_NAME="v${TAG}" SHA256="$SHA256" SIZE="$SIZE" CHANNEL="$CHANNEL" \
+            APK_NAME="$(basename "$APK")" HTML_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            python3 - <<'PY' > "dist/${APP_NAME}-${TAG}-${SHA7}-update.json"
+          import datetime, json, os, re
+          policy = json.load(open(os.environ["UPDATE_POLICY_FILE"], encoding="utf-8"))
+          schema = policy.get("schema", 1)
+          if schema != 1:
+              raise SystemExit(f"unsupported schema: {schema}")
+          rollout = int(policy.get("rolloutPercent", 100))
+          if not 0 <= rollout <= 100:
+              raise SystemExit(f"invalid rolloutPercent: {rollout}")
+          min_supported = str(policy.get("minSupportedVersion", "")).strip()
+          if min_supported and not re.fullmatch(r"v?\d+(\.\d+)*([.-][0-9A-Za-z.]+)?", min_supported):
+              raise SystemExit(f"invalid minSupportedVersion: {min_supported}")
+          payload = {
+              "schema": 1,
+              "versionName": os.environ["TAG_NAME"].lstrip("vV"),
+              "tagName": os.environ["TAG_NAME"],
+              "channel": os.environ["CHANNEL"],
+              "rolloutPercent": rollout,
+              # 允许留空/null：客户端视为不强制
+              "minSupportedVersion": min_supported or None,
+              "publishedAt": datetime.datetime.now(datetime.timezone.utc)
+                  .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "htmlUrl": os.environ["HTML_URL"],
+              "apk": {
+                  "name": os.environ["APK_NAME"],
+                  "size": int(os.environ["SIZE"]),
+                  "sha256": os.environ["SHA256"],
+              },
+          }
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+          PY
+          cat "dist/${APP_NAME}-${TAG}-${SHA7}-update.json"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # 预发布通道：tag 含 "-"（如 v1.2.3-beta.1）必须标记 GitHub prerelease，
+          # 否则 stable 用户的 releases/latest 会把 Beta 当正式版。
+          PRERELEASE_FLAG=""
+          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          # APK 与 .sha256 必须存在；-update.json / mapping 可选（policy 缺失或未混淆时不存在）
+          compgen -G "dist/*.apk" > /dev/null || { echo "::error::dist 下没有 APK 资产"; exit 1; }
+          compgen -G "dist/*.apk.sha256" > /dev/null || { echo "::error::dist 下没有 .sha256 资产"; exit 1; }
+          ASSETS=(dist/*.apk dist/*.apk.sha256)
+          if compgen -G "dist/*-update.json" > /dev/null; then
+            ASSETS+=(dist/*-update.json)
+          fi
+          if compgen -G "dist/*-mapping.txt" > /dev/null; then
+            ASSETS+=(dist/*-mapping.txt)
+          fi
+          NOTES=(--generate-notes)
+          if [ -n "${RELEASE_NOTES_FILE:-}" ] && [ -f "$RELEASE_NOTES_FILE" ]; then
+            NOTES=(--notes-file "$RELEASE_NOTES_FILE")
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "${ASSETS[@]}" \
+            --verify-tag $PRERELEASE_FLAG \
+            "${NOTES[@]}" \
+            --title "${APP_NAME} ${GITHUB_REF_NAME}"

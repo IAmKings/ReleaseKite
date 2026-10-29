@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ReleaseKite Compose UI 默认英文资源（宿主可覆盖同名资源做品牌化文案）。
+
+  约定（docs/API_CONTRACT.md §3）：
+  - 所有 key 统一 releasekite_ 前缀，避免与宿主资源冲突；
+  - 中文见 values-zh-rCN/strings.xml；
+  - 失败原因覆盖 core 的 15 种 UpdateFailure（Http 拆普通/限流两条文案）。
+-->
+<resources>
+
+    <!-- ===== 设置行（检查更新） ===== -->
+    <string name="releasekite_row_title">Check for updates</string>
+    <string name="releasekite_row_current">Current version %1$s</string>
+    <string name="releasekite_row_checking">Checking for updates…</string>
+    <string name="releasekite_row_up_to_date">You\'re up to date (%1$s)</string>
+    <string name="releasekite_row_available">New version %1$s available</string>
+    <string name="releasekite_row_rollout_pending">Version %1$s is rolling out (%2$d%%)</string>
+    <string name="releasekite_row_downloading">Downloading %1$d%%</string>
+    <string name="releasekite_row_verifying">Verifying package…</string>
+    <string name="releasekite_row_permission">Waiting for install permission</string>
+    <string name="releasekite_row_check_failed">Check failed, tap to retry</string>
+    <string name="releasekite_row_download_failed">Download failed, tap to retry</string>
+
+    <!-- ===== 更新设置区 ===== -->
+    <string name="releasekite_settings_title">Update settings</string>
+    <string name="releasekite_settings_auto_title">Check for updates automatically</string>
+    <string name="releasekite_settings_auto_desc">Checked on launch (at most once per 24 hours); manual checks still work when off</string>
+    <string name="releasekite_settings_beta_title">Receive pre-release (Beta) builds</string>
+    <string name="releasekite_settings_beta_desc">Try new features early, but builds may be unstable</string>
+
+    <!-- ===== 更新线路健康 ===== -->
+    <string name="releasekite_route_title">Update routes</string>
+    <string name="releasekite_route_direct">Direct</string>
+    <string name="releasekite_route_mirror">Mirror %1$s</string>
+    <string name="releasekite_route_ok">Healthy</string>
+    <string name="releasekite_route_cooling">Cooling down</string>
+    <string name="releasekite_route_none">No data yet</string>
+    <string name="releasekite_route_reset">Reset route status</string>
+
+    <!-- ===== 更新弹窗 ===== -->
+    <string name="releasekite_dialog_title_available">Update available</string>
+    <string name="releasekite_dialog_title_forced">Update required</string>
+    <string name="releasekite_dialog_title_downloading">Downloading update</string>
+    <string name="releasekite_dialog_title_verifying">Verifying package</string>
+    <string name="releasekite_dialog_title_failed">Update failed</string>
+    <string name="releasekite_dialog_title_permission">Install permission required</string>
+
+    <string name="releasekite_dialog_forced_hint">This version includes important fixes. Please update to continue.</string>
+    <string name="releasekite_dialog_version_line">Current %1$s → New version %2$s</string>
+    <string name="releasekite_dialog_meta">%1$s · %2$s</string>
+    <string name="releasekite_dialog_meta_size">%1$s</string>
+    <string name="releasekite_dialog_notes_title">Release notes</string>
+    <string name="releasekite_dialog_notes_empty">No release notes provided.</string>
+    <string name="releasekite_dialog_view_full">View full release notes</string>
+
+    <string name="releasekite_dialog_update_now">Update now</string>
+    <string name="releasekite_dialog_later">Later</string>
+    <string name="releasekite_dialog_retry">Retry</string>
+    <string name="releasekite_dialog_close">Close</string>
+    <string name="releasekite_dialog_cancel">Cancel</string>
+    <string name="releasekite_dialog_open_settings">Open settings</string>
+    <string name="releasekite_dialog_exit_temporarily">Exit for now</string>
+
+    <string name="releasekite_dialog_progress_desc">Update download progress</string>
+    <string name="releasekite_dialog_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="releasekite_dialog_size_unknown">Unknown size</string>
+    <string name="releasekite_dialog_downloading_hint">The system installer opens automatically when the download completes</string>
+    <string name="releasekite_dialog_verifying_hint">The system installer opens automatically after verification</string>
+    <string name="releasekite_dialog_permission_message">Allow installing unknown apps to finish updating. Installation continues automatically when you return.</string>
+
+    <!-- ===== 失败原因（15 种 UpdateFailure，Http 拆两条） ===== -->
+    <string name="releasekite_error_network">Network unavailable. Check your connection and try again.</string>
+    <string name="releasekite_error_timeout">Check timed out. Please try again later.</string>
+    <string name="releasekite_error_http">Server error (HTTP %1$d)</string>
+    <string name="releasekite_error_rate_limited">Too many requests. Please try again later.</string>
+    <string name="releasekite_error_parse">Failed to parse update information</string>
+    <string name="releasekite_error_no_release">No release found</string>
+    <string name="releasekite_error_incomplete">Release information is incomplete</string>
+    <string name="releasekite_error_no_checksum">Release has no checksum; download refused</string>
+    <string name="releasekite_error_checksum">Package verification failed and the file was deleted</string>
+    <string name="releasekite_error_invalid_apk">Invalid package or signature mismatch; installation refused</string>
+    <string name="releasekite_error_space">Not enough storage. Free up space and try again.</string>
+    <string name="releasekite_error_install_permission">Install permission missing</string>
+    <string name="releasekite_error_install">Could not open the system installer</string>
+    <string name="releasekite_error_file">Package file unavailable</string>
+    <string name="releasekite_error_cancelled">Update cancelled</string>
+    <string name="releasekite_error_release_unavailable">This release is no longer available. Check for updates again.</string>
+    <string name="releasekite_error_unknown">Update failed. Please try again later.</string>
+
+</resources>

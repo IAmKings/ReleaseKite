@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ReleaseKite 通知文案（简体中文）。 -->
+<resources>
+    <string name="releasekite_notification_channel_name">应用更新</string>
+    <string name="releasekite_notification_channel_desc">更新下载与安装提醒</string>
+    <string name="releasekite_notification_progress_title">正在下载更新</string>
+    <string name="releasekite_notification_progress_text">版本 %1$s · %2$d%%</string>
+    <string name="releasekite_notification_complete_title">更新已下载</string>
+    <string name="releasekite_notification_complete_text">点击安装 %1$s</string>
+</resources>

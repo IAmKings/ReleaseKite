@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 只暴露 cacheDir/releasekite/updates：不暴露 filesDir、数据库或其它缓存。 -->
+<paths>
+    <cache-path
+        name="releasekite_updates"
+        path="releasekite/updates/" />
+</paths>

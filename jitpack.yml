@@ -1,0 +1,11 @@
+# JitPack 构建配置。
+#
+# - JDK：JitPack 默认使用较老的 JDK，这里显式指定 21（与 CI 一致）；
+# - 安装入口：JitPack 默认执行 `./gradlew install`。仓库根 build.gradle.kts 已注册
+#   同名聚合任务，依次发布三个库模块到 Maven Local：
+#     :releasekite-core:publishToMavenLocal
+#     :releasekite:publishToMavenLocal
+#     :releasekite-compose:publishToMavenLocal
+#   因此无需在此重复写 install 命令。
+jdk:
+  - openjdk21

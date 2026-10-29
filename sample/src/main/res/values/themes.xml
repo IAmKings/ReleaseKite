@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 示例仅使用框架主题；真正的配色由 Compose Material3 主题控制。 -->
+    <style name="Theme.ReleaseKiteSample" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFFBFE</item>
+    </style>
+</resources>

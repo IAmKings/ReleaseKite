@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ReleaseKite Android 集成层清单（由宿主 App 合并）。
+
+  · 网络/安装/通知权限：库本身声明，宿主无需重复；
+  · WorkManager 前台服务：Android 14+ 必须声明 foregroundServiceType，
+    使用 tools:node="merge" 与宿主已有声明合并；
+  · FileProvider：只暴露 cacheDir/releasekite/updates，authority 固定为
+    ${applicationId}.releasekite.updates（库代码按 packageName 推导）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 下载完成后的系统安装器（仅升级本应用自身）。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 后台下载通知（Android 13+ 运行时权限由 ReleaseKiteHost 请求）。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application>
+        <!-- WorkManager 前台服务：Android 14+ 必须声明类型。 -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <!--
+          把已下载并校验过的 APK 以 content:// 交给系统安装器。
+          必须用库自己的 FileProvider 子类（而不是 androidx.core.content.FileProvider）：
+          manifest merger 以 provider 的 android:name 为键，直接用 androidx 类会让
+          「宿主也有自己的 FileProvider」的应用合并失败（T6 审查 P1-1）。
+        -->
+        <provider
+            android:name="io.github.releasekite.internal.ReleaseKiteFileProvider"
+            android:authorities="${applicationId}.releasekite.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/releasekite_file_paths" />
+        </provider>
+    </application>
+
+</manifest>
