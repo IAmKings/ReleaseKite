@@ -41,11 +41,13 @@ def local_target(page: Path, raw: str) -> Path | None:
     if not url:
         return None
     url = urllib.parse.unquote(url)
+    base = page.parent
     if url.startswith("/"):
         if not url.startswith(BASE_PATH):
             return None
         url = url[len(BASE_PATH) :]
-    target = (page.parent / url).resolve()
+        base = SITE
+    target = (base / url).resolve()
     try:
         target.relative_to(SITE.resolve())
     except ValueError:

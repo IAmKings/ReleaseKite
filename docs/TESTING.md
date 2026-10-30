@@ -231,3 +231,14 @@ CI（`.github/workflows/ci.yml`）在每次 push/PR 执行：JDK 21 + Android SD
 - WorkManager：回调拒绝后，新任务及其持久化目标保持不变，旧 id 未入库。
 - Host：移除/重挂正确归还前台计数；STOP 后再 dispose 不会扣除其它窗口的引用。
 - 发布策略：`python3 scripts/test-release-metadata.py` 另有 2 个 Python 测试，覆盖缺失、null、空串、合法版本与非法版本。CI 自动运行。
+
+## 发布与文档工具回归
+
+```bash
+python3 scripts/test-publish-workflow.py
+python3 scripts/test-site-links.py
+```
+
+以上 12 个脚本测试已加入 CI。发布测试通过本地 curl/Gradle 替身执行实际 workflow 的 Bash，
+覆盖全部缺失、全部存在、部分模块已发布、POM/二进制不完整、HTTP/传输错误、发布失败及发布后制品缺失；不会上传或覆盖远程包。
+站点测试使用独立临时目录，覆盖嵌套页面的站点根路径、相对路径、查询参数/锚点、根首页和真实缺失资源。

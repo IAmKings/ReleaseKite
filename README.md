@@ -192,6 +192,10 @@ implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
 
 仓库已内置 `.github/workflows/publish-github-packages.yml`：GitHub Release published 或手动
 `workflow_dispatch` 时，用 `GITHUB_TOKEN`（`packages: write`）把三个模块发布到 GitHub Packages。
+工作流先逐模块检查 POM 与 JAR/AAR：完整模块只验证，完全缺失的模块才发布。
+部分制品缺失的半成品版本会在任何上传前失败，需使用新版本；401/403/429/5xx 等探测错误也会终止，
+不会被误当作未发布。发布后再次验证全部六个制品。
+
 消费端需要带 `read:packages` 的 token：
 
 ```kotlin

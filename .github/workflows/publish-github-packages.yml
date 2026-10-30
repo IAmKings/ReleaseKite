@@ -42,63 +42,58 @@ jobs:
       - name: Set up Gradle with cache
         uses: gradle/actions/setup-gradle@v4
 
-      # publishing.gradle.kts 仅在 GITHUB_ACTOR/GITHUB_TOKEN 存在时注册 GitHub Packages 仓库。
-      - name: Check whether this version is already published
-        id: existing
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          VERSION="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -1)"
-          GROUP="$(sed -n 's/^GROUP=//p' gradle.properties | head -1)"
-          GROUP_PATH="${GROUP//./\/}"
-          BASE="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/${GROUP_PATH}"
-          published=1
-          for module in releasekite-core releasekite releasekite-compose; do
-            url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.pom"
-            code="$(curl -sSL -m 30 -o /dev/null -w '%{http_code}' \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
-            echo "$code $url"
-            [ "$code" = "200" ] || published=0
-          done
-          echo "published=${published}" >> "$GITHUB_OUTPUT"
-          if [ "$published" = "1" ]; then
-            echo "Version ${VERSION} already published; skip immutable re-publish, verify only."
-          fi
-
-      - name: Publish to GitHub Packages
-        if: steps.existing.outputs.published != '1'
+      # 先检查全部模块，再只发布完全缺失的模块；不覆盖已发布或半成品版本。
+      - name: Publish missing modules and verify artifacts
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          ./gradlew --no-daemon --stacktrace \
-            :releasekite-core:publish \
-            :releasekite:publish \
-            :releasekite-compose:publish
-
-      # 用同仓库 GITHUB_TOKEN（packages: write 含读权限）验证包真实可下载，
-      # 防止“Gradle publish 成功但制品不可见”的假绿；已发布版本可重复验证。
-      - name: Verify package artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
           set -euo pipefail
           VERSION="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -1)"
           GROUP="$(sed -n 's/^GROUP=//p' gradle.properties | head -1)"
+          [ -n "$VERSION" ] && [ -n "$GROUP" ] || { echo "::error::Missing publication coordinates"; exit 1; }
           GROUP_PATH="${GROUP//./\/}"
           BASE="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/${GROUP_PATH}"
-          for spec in "releasekite-core:pom" "releasekite-core:jar" \
-                      "releasekite:pom" "releasekite:aar" \
-                      "releasekite-compose:pom" "releasekite-compose:aar"; do
+          modules=("releasekite-core:jar" "releasekite:aar" "releasekite-compose:aar")
+          tasks=()
+
+          artifact_code() {
+            local url="${BASE}/$1/${VERSION}/$1-${VERSION}.$2"
+            curl -sSL -m 30 -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url"
+          }
+
+          for spec in "${modules[@]}"; do
             module="${spec%%:*}"
-            ext="${spec##*:}"
-            url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.${ext}"
-            code="$(curl -sSL -m 30 -o /dev/null -w '%{http_code}' \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
-            echo "$code $url"
-            [ "$code" = "200" ] || { echo "::error::GitHub Packages artifact 不可用: $url"; exit 1; }
+            binary="${spec##*:}"
+            present=0
+            for ext in pom "$binary"; do
+              code="$(artifact_code "$module" "$ext")"
+              echo "$code ${module}-${VERSION}.${ext}"
+              case "$code" in
+                200) present=$((present + 1)) ;;
+                404) ;;
+                *) echo "::error::Cannot determine package state: $module.$ext (HTTP $code)"; exit 1 ;;
+              esac
+            done
+            case "$present" in
+              0) tasks+=(":${module}:publishReleasePublicationToGitHubPackagesRepository") ;;
+              2) echo "Complete package $module:$VERSION exists; skip immutable re-publish." ;;
+              *) echo "::error::Incomplete package $module:$VERSION. Do not overwrite it; publish a new version."; exit 1 ;;
+            esac
+          done
+
+          if [ "${#tasks[@]}" -gt 0 ]; then
+            ./gradlew --no-daemon --stacktrace "${tasks[@]}"
+          fi
+
+          for spec in "${modules[@]}"; do
+            module="${spec%%:*}"
+            binary="${spec##*:}"
+            for ext in pom "$binary"; do
+              code="$(artifact_code "$module" "$ext")"
+              echo "$code ${module}-${VERSION}.${ext}"
+              [ "$code" = "200" ] || { echo "::error::Published artifact unavailable: $module.$ext (HTTP $code)"; exit 1; }
+            done
           done

@@ -66,6 +66,11 @@ jobs:
       - name: Release metadata policy tests
         run: python3 scripts/test-release-metadata.py
 
+      - name: Publishing and site tooling regression tests
+        run: |
+          python3 scripts/test-publish-workflow.py
+          python3 scripts/test-site-links.py
+
       - name: Validate AI skills
         run: python3 scripts/test-skills.py
 
