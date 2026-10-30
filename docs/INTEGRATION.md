@@ -30,9 +30,9 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    // JitPack 多模块坐标：com.github.<owner>.<Repo>:<module>:<tag>
+    // JitPack 多模块坐标：com.github.IAmKings.ReleaseKite:<module>:<tag>
     // Compose UI + Android 适配层 + core（api 传递依赖，一步到位）
-    implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+    implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
 
     // 宿主自己的 Compose 栈（库仅 api 暴露 compose-ui/ui-graphics；
     // BOM/material3/activity-compose 等由宿主按自己的 Compose 版本声明）
@@ -43,22 +43,21 @@ dependencies {
 }
 ```
 
-> **占位符说明**：`<owner>` 换成发布仓库的 GitHub 用户/组织，`<version>` 换成 JitPack 上的
-> tag（如 `0.1.0`）。JitPack 多模块仓库的坐标格式固定为
-> `com.github.<owner>.<Repo>:<module>:<tag>`；根工程本身不发布制品，不要依赖
-> `com.github.<owner>:ReleaseKite`。
+> **坐标说明**：本仓库 JitPack 坐标为 `com.github.IAmKings.ReleaseKite:<module>:<tag>`
+> （tag 如 `v0.1.0`）；根工程本身不发布制品，不要依赖
+> `com.github.IAmKings:ReleaseKite`。
 >
 > 只需要部分模块时使用同样的坐标格式：
 >
 > ```kotlin
 > // Android 适配层（无 Compose UI）
-> implementation("com.github.<owner>.ReleaseKite:releasekite:<version>")
+> implementation("com.github.IAmKings.ReleaseKite:releasekite:v0.1.0")
 > // 纯 JVM 引擎（自建平台适配/工具）
-> implementation("com.github.<owner>.ReleaseKite:releasekite-core:<version>")
+> implementation("com.github.IAmKings.ReleaseKite:releasekite-core:v0.1.0")
 > ```
 >
 > 本地验证/离线场景用 `./gradlew publishToMavenLocal` 发布后走 `mavenLocal()`，
-> 坐标为本仓库默认 groupId：`io.github.releasekite:releasekite-compose:<version>`（见 §1.2）。
+> 坐标为本仓库默认 groupId：`com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0`（见 §1.2）。
 
 ### 1.2 本地 Maven 仓库 / GitHub Packages（占位符）
 
@@ -74,12 +73,13 @@ repositories { mavenLocal() }
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.releasekite:releasekite-compose:0.1.0")
+    // mavenLocal artifact 版本为 0.1.0（不带 v；JitPack tag 为 v0.1.0）
+    implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
 }
 ```
 
 GitHub Packages 需要在 fork 中自行给 `publishing.gradle.kts` 增加
-`maven { url = uri("https://maven.pkg.github.com/<owner>/ReleaseKite") ... }` 与凭据；
+`maven { url = uri("https://maven.pkg.github.com/IAmKings/ReleaseKite") ... }` 与凭据；
 本仓库没有内置该配置，属于占位能力。
 
 ## 2. Application 初始化（约 1 分钟）

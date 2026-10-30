@@ -1,5 +1,8 @@
 # ReleaseKite
 
+[![Release](https://jitpack.io/v/IAmKings/ReleaseKite.svg)](https://jitpack.io/#IAmKings/ReleaseKite)
+仓库: https://github.com/IAmKings/ReleaseKite · 文档: [`docs/`](docs/)
+
 以 **GitHub Release 为版本源**的 Android 应用内更新库：检查更新、更新弹窗、下载进度、
 SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Beta 通道、灰度分桶、强制更新与
 下载线路/镜像回退。
@@ -45,9 +48,9 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    // JitPack 多模块坐标：com.github.<owner>.<Repo>:<module>:<tag>
+    // JitPack 多模块坐标：com.github.IAmKings.ReleaseKite:<module>:v0.1.0
     // Compose UI 模块（api 传递依赖会带入 releasekite 与 releasekite-core）
-    implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+    implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
 
     // 宿主自己的 Compose 栈（库的公开 API 用 api 暴露了 compose-ui/ui-graphics；
     // 宿主页面自身仍需 BOM/material3/activity-compose，版本按你的工程选择）
@@ -154,39 +157,32 @@ myapp-1.2.3-<sha7>-mapping.txt                 # 可选：R8 mapping
 
 ## JitPack / GitHub Packages 坐标
 
-> 占位符：`<owner>` 换成发布仓库的 GitHub 用户/组织，`<version>` 换成 tag（如 `0.1.0`）。
-> JitPack 多模块仓库的坐标格式是 `com.github.<owner>.<Repo>:<module>:<tag>`；根工程本身
-> 不发布制品，不要依赖 `com.github.<owner>:ReleaseKite`。
+> 本仓库 JitPack 坐标：`com.github.IAmKings.ReleaseKite:<module>:<tag>`（tag 如 `v0.1.0`）；
+> 根工程本身不发布制品，不要依赖 `com.github.IAmKings:ReleaseKite`。
 
 ```kotlin
 // JitPack：完整 UI（api 传递依赖带入 releasekite 与 releasekite-core）
-implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
 
 // 只要 Android 适配层（无 Compose UI）
-implementation("com.github.<owner>.ReleaseKite:releasekite:<version>")
+implementation("com.github.IAmKings.ReleaseKite:releasekite:v0.1.0")
 
 // 只要纯 JVM 引擎（自建平台适配/工具）
-implementation("com.github.<owner>.ReleaseKite:releasekite-core:<version>")
+implementation("com.github.IAmKings.ReleaseKite:releasekite-core:v0.1.0")
 
-// 本地 Maven 备选：先 ./gradlew publishToMavenLocal，再使用本仓库默认 groupId
-implementation("io.github.releasekite:releasekite-core:0.1.0")
-implementation("io.github.releasekite:releasekite:0.1.0")
-implementation("io.github.releasekite:releasekite-compose:0.1.0")
+// 本地 Maven 备选：先 ./gradlew publishToMavenLocal（artifact 版本为 0.1.0，不带 v）
+implementation("com.github.IAmKings.ReleaseKite:releasekite-core:0.1.0")
+implementation("com.github.IAmKings.ReleaseKite:releasekite:0.1.0")
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
 ```
 
 GitHub Packages 需要在 fork 中为 `gradle/publishing.gradle.kts` 追加仓库与凭据配置
 （本仓库未内置）。
 
-> **发布前验证 JitPack**：本仓库默认发布 group 是 `io.github.releasekite`，而 JitPack 的
-> 多模块消费坐标是 `com.github.<owner>.<Repo>:<module>:<tag>`。JitPack 对多模块 Gradle
-> metadata 的 group 重写有已知限制，发布到 JitPack 前应：
-> 1) 用真实 GitHub 仓库推一个 tag；
-> 2) 以 `./gradlew publishToMavenLocal -PGROUP=com.github.<owner>.ReleaseKite` 验证 JitPack
->    构建入口；
-> 3) 至少用一个只依赖发布坐标的独立 consumer 工程跑 `assembleRelease`（本地可用
->    `scripts/consumer-smoke.sh` 验证 mavenLocal 路径，JitPack 实网路径需在推送后复核）。
-> 若 JitPack 解析失败，改用 GitHub Packages 或 Maven Central 发布（`-PPOM_URL=...` 设置
-> POM url/scm 元数据）。
+> **JitPack 构建**：仓库使用与 JitPack 一致的 group（`com.github.IAmKings.ReleaseKite`），
+> 推送 tag 后 JitPack 首次请求会自动构建；本地可用 `scripts/consumer-smoke.sh` 验证
+> mavenLocal 发布物。若未来发布到 Maven Central/GitHub Packages，可用
+> `-PGROUP=io.github.iamkings` 覆盖坐标（POM url/scm 已指向本仓库）。
 
 ## 构建与测试
 
@@ -243,7 +239,7 @@ ReleaseKite is a reusable Android in-app update library backed by GitHub Release
 maven("https://jitpack.io")
 
 // 2) Dependencies (JitPack multi-module coordinate; replace <owner>/<version>)
-implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
 // Host app's own Compose stack (library exposes compose-ui/ui-graphics via api)
 implementation(platform("androidx.compose:compose-bom:2026.06.01"))
 implementation("androidx.compose.ui:ui")

@@ -17,13 +17,12 @@ val moduleDescription = when (project.name) {
     else -> "ReleaseKite module ${project.name}."
 }
 
-// POM 的 URL/SCM 元数据：默认从 CI 的 GITHUB_REPOSITORY 推导；本地/未配置仓库时为占位 URL。
-// 发布前请用 -PPOM_URL=https://github.com/<owner>/ReleaseKite 或环境变量覆盖。
+// POM 的 URL/SCM 元数据：优先 POM_URL，其次 CI 的 GITHUB_REPOSITORY，最后本仓库真实地址。
 val pomUrl: String = providers.gradleProperty("POM_URL").orNull
     ?: providers.environmentVariable("GITHUB_REPOSITORY").orNull
         ?.takeIf { it.isNotBlank() }
         ?.let { "https://github.com/$it" }
-    ?: "https://github.com/OWNER/ReleaseKite"
+    ?: "https://github.com/IAmKings/ReleaseKite"
 val repoPath = pomUrl.substringAfter("github.com/", "").trim('/').removeSuffix(".git")
 val scmUrl = "https://github.com/$repoPath.git"
 val scmSsh = "scm:git:ssh://git@github.com/$repoPath.git"

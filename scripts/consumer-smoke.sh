@@ -5,7 +5,7 @@
 # 目的：验证「发布产物」而不是源码工程：
 #   1) ./gradlew publishToMavenLocal 产出三个模块；
 #   2) 一个独立的最小 Compose App 仅通过 mavenLocal 坐标消费
-#      io.github.releasekite:releasekite-compose:0.1.0；
+#      <GROUP>:releasekite-compose:<VERSION>（GROUP/VERSION 读取 gradle.properties）；
 #   3) 该 App 以 R8 minify + shrinkResources 构建 release，验证 POM/Gradle
 #      module metadata、Compose 依赖 api scope、consumer ProGuard 规则。
 #
@@ -18,9 +18,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="${TMPDIR:-/tmp}/releasekite-consumer-smoke"
 VERSION="$(sed -n 's/^VERSION_NAME=//p' "$ROOT/gradle.properties" | head -1)"
+GROUP="$(sed -n 's/^GROUP=//p' "$ROOT/gradle.properties" | head -1)"
 [ -n "$VERSION" ] || { echo "无法从 gradle.properties 读取 VERSION_NAME" >&2; exit 1; }
 
-echo "==> publishToMavenLocal (VERSION=$VERSION)"
+echo "==> publishToMavenLocal (GROUP=$GROUP VERSION=$VERSION)"
 (cd "$ROOT" && ./gradlew -q publishToMavenLocal)
 
 rm -rf "$WORK"
@@ -101,7 +102,7 @@ kotlin {
 
 dependencies {
     // 被测发布物：只从 mavenLocal 取 AAR/POM，不使用 project(":...")。
-    implementation("io.github.releasekite:releasekite-compose:$VERSION")
+    implementation("$GROUP:releasekite-compose:$VERSION")
 
     // 一个真实 Compose 宿主自身的依赖（BOM + 编译所需 Compose 栈）。
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))
