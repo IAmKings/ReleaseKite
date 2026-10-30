@@ -306,6 +306,7 @@ and [`docs/SECURITY.md`](docs/SECURITY.md).
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 威胁模型、HTTPS/白名单/SHA/签名、隐私、商店合规 |
 | [`docs/MIGRATION_ZHIBOX.md`](docs/MIGRATION_ZHIBOX.md) | ZhiBox 提交 → 不变量 → ReleaseKite 测试对照、文件映射、有意差异 |
 | [`docs/TESTING.md`](docs/TESTING.md) | 自动化矩阵、门禁命令、真机验收清单 |
+| [`skills/`](skills/README.md) | AI skill：接入、使用、发布、维护与排障的任务路由/安装方式 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
 
 ## License

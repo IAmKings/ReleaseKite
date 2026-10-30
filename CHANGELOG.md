@@ -3,6 +3,17 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+
+- `skills/releasekite/`：AI agent skill，按“接入 / 使用 / 发布 / 维护 / 排障”路由到
+  canonical docs，包含硬约束、最小事实和验证清单；
+- `scripts/install-skills.sh`：把 canonical skill 安装到 `~/.agents/skills` /
+  `~/.claude/skills`（symlink 或 copy）；
+- `scripts/test-skills.py` + CI 校验：frontmatter、必备章节、相对链接、secrets/本机路径；
+- `AGENTS.md`：仓库内 agent 的 skill 入口指针；README 文档表增加 skills 链接。
+
 ## [0.1.0] - 2026-10-30
 
 首个公开版本：从 [ZhiBox](https://github.com/IAmKings/ZhiBox) 抽取的应用内更新库，

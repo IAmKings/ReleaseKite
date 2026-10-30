@@ -66,6 +66,9 @@ jobs:
       - name: Release metadata policy tests
         run: python3 scripts/test-release-metadata.py
 
+      - name: Validate AI skills
+        run: python3 scripts/test-skills.py
+
       - name: Unit tests (core / android / compose)
         run: |
           ./gradlew --no-daemon --stacktrace \
