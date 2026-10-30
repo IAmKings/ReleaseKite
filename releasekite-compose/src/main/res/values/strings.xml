@@ -86,6 +86,5 @@
     <string name="releasekite_error_file">Package file unavailable</string>
     <string name="releasekite_error_cancelled">Update cancelled</string>
     <string name="releasekite_error_release_unavailable">This release is no longer available. Check for updates again.</string>
-    <string name="releasekite_error_unknown">Update failed. Please try again later.</string>
 
 </resources>

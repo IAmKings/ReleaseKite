@@ -94,9 +94,11 @@ class ReleaseKiteUpdateRowTest {
     }
 
     @Test
-    fun needInstallPermissionShowsWaitingText() {
+    fun needInstallPermissionShowsWaitingTextAndIsNotClickable() {
         render(UpdatePhase.NeedInstallPermission(ReleaseKiteTestData.info()))
         composeRule.onNodeWithText("Waiting for install permission").assertExists()
+        // checkNow() 会被 manager 的「下载进行中」守卫忽略，行保持可点只会产生死点击。
+        composeRule.onNodeWithTag(ReleaseKiteTestTags.ROW).assertIsNotEnabled()
     }
 
     @Test
@@ -130,6 +132,15 @@ class ReleaseKiteUpdateRowTest {
                 70L * 1024 * 1024,
             ),
         ) { clicks++ }
+        composeRule.onNodeWithTag(ReleaseKiteTestTags.ROW).performClick()
+        composeRule.waitForIdle()
+        assertEquals(0, clicks)
+    }
+
+    @Test
+    fun clickWhileWaitingForInstallPermissionDoesNotInvokeCheck() {
+        var clicks = 0
+        render(UpdatePhase.NeedInstallPermission(ReleaseKiteTestData.info())) { clicks++ }
         composeRule.onNodeWithTag(ReleaseKiteTestTags.ROW).performClick()
         composeRule.waitForIdle()
         assertEquals(0, clicks)

@@ -28,6 +28,17 @@ name: Release (signed APK)
 #
 # 签名密钥是应用的长期身份：一旦客户端安装了某个签名的版本，后续更新必须用同一证书，
 # 否则 ReleaseKite 的 ApkValidator 会拒绝安装。keystore/口令只放 Secrets，必须离线备份。
+# 建议：把每次发布 apksigner 输出的证书 SHA-256 记入发布记录，换机/换 CI 后核对指纹一致，
+# 不要轮换签名证书；若证书丢失，只能先用旧签名发布「引导用户卸载重装」的版本，否则无法自动升级。
+#
+# 策略文件路径注意：宿主若沿用 ReleaseKite 仓库的 .gitignore（其中 `release/` 用于忽略签名材料），
+# 需要给策略文件加例外，例如：
+#   !release/
+#   !release/update-policy.json
+# 或把 policy 放到其它未被忽略的路径并同步修改 env.UPDATE_POLICY_FILE。
+#
+# 发布方式：先创建 draft（对客户端不可见）→ 上传全部资产 → 再 publish，
+# 避免 `releases/latest` 在资产未传完时被客户端读到；中途失败时 draft 保持隐藏，修好后重跑。
 # ============================================================================
 
 on:
@@ -118,8 +129,8 @@ jobs:
       - name: Verify signature & manifest
         run: |
           set -euo pipefail
-          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*-release*.apk' | head -1)"
-          [ -n "$APK" ] || APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | head -1)"
+          # 只取已签名产物：排除 *-unsigned.apk 并按名称排序，避免误选上次残留/未签名 APK。
+          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' ! -name '*-unsigned.apk' | sort | sed -n '1p')"
           [ -n "$APK" ] || { echo "::error::未找到签名 APK（$APK_DIR）；检查 signingConfig/Secrets"; ls -l "$APK_DIR" || true; exit 1; }
           echo "APK=$APK"
           BT="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
@@ -136,15 +147,28 @@ jobs:
           if ! echo "$BADGING" | grep -m1 '^package:' | grep -q "versionName='${VERSION_NAME}'"; then
             echo "::error::APK versionName 与 tag 不一致（期望 ${VERSION_NAME}）"; exit 1
           fi
+          # 证书连续性：记录本次签名证书 SHA-256，发布记录/审计时与历史版本核对。
+          CERT_SHA="$(grep -m1 'certificate SHA-256 digest:' /tmp/apksigner.txt | sed -E 's/.*digest:[[:space:]]*//' || true)"
+          echo "signing certificate SHA-256: ${CERT_SHA:-unknown}"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Signing certificate"
+              echo ""
+              echo "- certificate SHA-256: \`${CERT_SHA:-unknown}\`"
+              echo "- 自更新要求后续版本使用同一证书；若与历史版本不一致，已安装用户将无法覆盖升级。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Archive release artifacts
         run: |
           set -euo pipefail
-          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*-release*.apk' | head -1)"
-          [ -n "$APK" ] || APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | head -1)"
+          APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' ! -name '*-unsigned.apk' | sort | sed -n '1p')"
+          [ -n "$APK" ] || { echo "::error::未找到已签名 APK（$APK_DIR）"; exit 1; }
           TAG="${GITHUB_REF_NAME#v}"
           SHA7="$(git rev-parse --short=7 HEAD)"
           OUT="dist/${APP_NAME}-${TAG}-${SHA7}-release-signed.apk"
+          # 清理上一次运行/本地残留，确保 dist 只含本次发布资产。
+          rm -rf dist
           mkdir -p dist
           cp -f "$APK" "$OUT"
           # .sha256 使用 sha256sum 标准格式（hash + 文件名）
@@ -233,8 +257,13 @@ jobs:
           if [ -n "${RELEASE_NOTES_FILE:-}" ] && [ -f "$RELEASE_NOTES_FILE" ]; then
             NOTES=(--notes-file "$RELEASE_NOTES_FILE")
           fi
+          # 先建 draft：客户端 releases/latest 在 publish 前看不到半成品 Release；
+          # gh release create 会同步上传全部资产，随后 edit --draft=false 一次性发布。
           gh release create "$GITHUB_REF_NAME" \
             "${ASSETS[@]}" \
+            --draft \
             --verify-tag $PRERELEASE_FLAG \
             "${NOTES[@]}" \
             --title "${APP_NAME} ${GITHUB_REF_NAME}"
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          echo "release published: $GITHUB_REF_NAME (prerelease=${PRERELEASE_FLAG:-false})"

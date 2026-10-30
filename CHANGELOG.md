@@ -45,6 +45,23 @@
 - 不支持静默安装；始终经系统安装器与用户授权；
 - 无遥测、无 token、匿名 API（60 次/小时/IP 限额，不绕过）。
 
+### Fixed（发布前深度审查）
+
+- 失败原因 wire code 改为固定字符串，不再依赖 R8 可能改名的 `failure::class.simpleName`；
+- `NoRelease` 撤回强制缓存（新鲜缓存后台复查 + 过期缓存检查两条路径），避免已删除 Release
+  的强制提示死循环；
+- 下载恢复使用独立 `releasekite_download_target` prefs 按 `workId` 绑定完整 `UpdateInfo`，
+  不再把刷新后的检查缓存误当成旧任务身份；旧的、无绑定目标的任务会取消并保留 `.part`；
+- `verifyCachedForced` 的 `NoRelease` 分支增加 phase 守卫，下载/校验/待安装期间不再清缓存/覆盖状态；
+- 下载状态流增加异常重连，`observe()` 取消操作移出 `Flow.map` 的 await 路径，避免管道静默死亡；
+- Android 12+ 后台 FGS 启动受限时降级为无前台服务下载，不再把通知失败误报成网络失败；
+- 前后台跟踪改为引用计数，修复多 Activity 重叠时误判后台导致不自动拉起安装器；
+- APK 签名校验在 API 28+ `signingInfo==null` 时回退 deprecated `signatures`；
+- `checkNow` 在下载/校验/待安装权限期间忽略，更新行同步置灰；
+- `releasekite-compose` 以 `api` 暴露 Compose BOM/ui/ui-graphics，修复独立 consumer 编译失败；
+- sample release 开启 R8/minify + resource shrink，新增独立 consumer smoke 与 CI release 门禁；
+- 文档/测试矩阵同步为 226 例（core 118 / Android 35 / Compose 73 = 94 迁移 + 132 新增）。
+
 ### Known limitations
 
 - 不支持增量更新（APK 签名约束）；

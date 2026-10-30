@@ -84,6 +84,5 @@
     <string name="releasekite_error_file">安装包文件不可用</string>
     <string name="releasekite_error_cancelled">更新已取消</string>
     <string name="releasekite_error_release_unavailable">该更新版本已下架，请重新检查更新</string>
-    <string name="releasekite_error_unknown">更新失败，请稍后重试</string>
 
 </resources>

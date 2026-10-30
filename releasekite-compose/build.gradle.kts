@@ -49,9 +49,12 @@ kotlin {
 dependencies {
     api(project(":releasekite"))
 
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
+    // 公开 API 暴露 Compose 类型（Modifier/Shape/Color/UpdateManager 签名里的 Compose 依赖），
+    // 必须用 api 暴露给 consumer，否则按 README「只依赖 releasekite-compose」的宿主编译失败。
+    api(platform(libs.androidx.compose.bom))
+    api(libs.androidx.ui)
+    api(libs.androidx.ui.graphics)
+
     implementation(libs.androidx.foundation)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.lifecycle.runtime.compose)

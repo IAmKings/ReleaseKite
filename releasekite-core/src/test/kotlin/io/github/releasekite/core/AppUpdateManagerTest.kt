@@ -1,6 +1,7 @@
 package io.github.releasekite.core
 
 import java.io.File
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
@@ -8,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -119,7 +121,19 @@ class AppUpdateManagerTest {
             enqueueGates.removeFirstOrNull()?.await()
         }
 
-        override fun observe(): Flow<DownloadWorkState> = states
+        /** 模拟 observe() 前 N 次抛异常（深审 P1 管道恢复用例）。 */
+        var observeFailuresRemaining: Int = 0
+        var observeCalls: Int = 0
+
+        override fun observe(): Flow<DownloadWorkState> {
+            observeCalls++
+            if (observeFailuresRemaining > 0) {
+                observeFailuresRemaining--
+                return flow { throw IllegalStateException("observe unavailable") }
+            }
+            return states
+        }
+
         var cancelCalls: Int = 0
         var cancelledWorkIds: MutableList<String?> = mutableListOf()
         override fun cancel(workId: String?) {
@@ -224,9 +238,11 @@ class AppUpdateManagerTest {
         workDir: File = tempFolder.newFolder(),
         foreground: Boolean = true,
         config: ReleaseKiteConfig = testConfig,
+        environment: FakeEnvironment? = null,
+        clock: (() -> Long)? = null,
     ): UpdateManager = UpdateManager(
         config = config,
-        environment = FakeEnvironment(
+        environment = environment ?: FakeEnvironment(
             workDir = workDir,
             currentVersionName = currentVersionName,
             isAppForeground = foreground,
@@ -238,7 +254,7 @@ class AppUpdateManagerTest {
         store = store,
         notifier = notifier,
         scope = scope,
-        clock = { now },
+        clock = clock ?: { now },
     )
 
     private fun testScope(scope: kotlinx.coroutines.test.TestScope): CoroutineScope =
@@ -1121,4 +1137,173 @@ class AppUpdateManagerTest {
         advanceUntilIdle()
         assertTrue(manager.state.value.phase is UpdatePhase.Idle)
     }
+    @Test
+    fun withdrawnForcedReleaseMustClearCachedPrompt() = runTest {
+        val store = FakeStore().apply {
+            saveCached(info("0.1.7", minSupportedVersion = "0.1.7"))
+        }
+        val source = FakeSource(mutableListOf(Result.failure(UpdateException(UpdateFailure.NoRelease))))
+        val manager = manager(scope = testScope(this), source = source, store = store)
+        manager.onAppEntered()
+        advanceUntilIdle()
+        assertNull("404/NoRelease must revoke cached forced release; actual=${manager.state.value.phase}", store.cachedInfo())
+    }
+
+    @Test
+    fun restoredForcedDownloadMustRemainForcedOnFailure() = runTest {
+        val store = FakeStore().apply {
+            saveCached(info("0.1.7", minSupportedVersion = "0.1.7"))
+        }
+        val scheduler = FakeScheduler()
+        val manager = manager(scope = testScope(this), store = store, scheduler = scheduler)
+        runCurrent()
+        scheduler.emit(DownloadWorkState(workId = "restored", status = DownloadWorkState.Status.RUNNING))
+        runCurrent()
+        assertTrue(manager.state.value.phase is UpdatePhase.Downloading)
+        scheduler.emit(DownloadWorkState(workId = "restored", status = DownloadWorkState.Status.FAILED, failure = UpdateFailure.Network))
+        runCurrent()
+        val phase = manager.state.value.phase as UpdatePhase.DownloadFailed
+        assertTrue("restored forced download was downgraded to optional: $phase", phase.forced)
+    }
+
+    @Test
+    fun disablingBetaMustNotShowCachedBeta() = runTest {
+        val store = FakeStore().apply {
+            channel = UpdateChannel.BETA
+            saveCached(info("0.1.7-beta.1").copy(channel = UpdateChannel.BETA))
+        }
+        val manager = manager(scope = testScope(this), store = store,
+            config = testConfig.copy(betaChannelEnabled = false))
+        manager.onAppEntered()
+        advanceUntilIdle()
+        assertEquals(UpdateChannel.STABLE, store.channel)
+        val offered = (manager.state.value.phase as? UpdatePhase.Available)?.info
+        assertTrue("beta disabled yet beta offered: $offered", offered?.channel != UpdateChannel.BETA)
+    }
+
+    @Test
+    fun coldStartCheckMustNotRaceWithResumedDownloadIdentity() = runTest {
+        val old = info("0.1.7")
+        val newer = info("0.1.8")
+        val store = FakeStore().apply { saveCached(old); cachedAtMillis = 1L }
+        val scheduler = FakeScheduler()
+        val source = FakeSource(mutableListOf(Result.success(newer)), delayMs = 100L)
+        val originalScope = testScope(this)
+        val manager = manager(scope = originalScope, store = store, scheduler = scheduler, source = source)
+        manager.onAppEntered()
+        runCurrent()
+        assertTrue(manager.state.value.phase is UpdatePhase.Checking)
+        scheduler.emit(DownloadWorkState(workId = "restored", status = DownloadWorkState.Status.RUNNING))
+        runCurrent()
+        advanceTimeBy(101L)
+        runCurrent()
+        assertTrue(manager.state.value.phase is UpdatePhase.Downloading)
+        assertEquals("0.1.8", store.cachedInfo()?.versionName)
+        originalScope.cancel()
+        val restoredScheduler = FakeScheduler()
+        val restored = manager(scope = testScope(this), store = store, scheduler = restoredScheduler,
+            installer = FakeInstaller(result = InstallResult.PermissionRequired))
+        runCurrent()
+        restoredScheduler.emit(DownloadWorkState(workId = "restored", status = DownloadWorkState.Status.RUNNING, info = old))
+        runCurrent()
+        val oldApk = writeApk(tempFolder.newFolder())
+        restoredScheduler.emit(DownloadWorkState(workId = "restored", status = DownloadWorkState.Status.SUCCEEDED,
+            apkPath = oldApk.absolutePath, info = old))
+        runCurrent()
+        val phase = restored.state.value.phase as UpdatePhase.NeedInstallPermission
+        assertEquals("running 0.1.7 APK must not be labeled/stored as 0.1.8", "0.1.7", phase.info.versionName)
+    }
+
+    // ── 2026-10-30 发布前深审回归（P1/P2） ─────────────────────
+
+    /**
+     * 深审 P1：forced 缓存的 verify 在途时用户已进入 Downloading，随后 verify 返回 NoRelease。
+     * 该失败不得清缓存、不得把 phase 覆盖成 Idle（否则正在下载的 UI 被静默打断）。
+     */
+    @Test
+    fun noReleaseDuringInFlightVerifyMustNotClobberDownloadingPhase() = runTest {
+        val now = 1_700_000_000_000L
+        val store = FakeStore().apply {
+            saveCached(info("0.1.7", minSupportedVersion = "0.1.7"))
+        }
+        var armClockHook = false
+        var managerRef: UpdateManager? = null
+        val clock: () -> Long = {
+            if (armClockHook) {
+                armClockHook = false
+                // 在 verify 处理失败前把 phase 推进到 Downloading（真实线程竞态的可控复现）。
+                managerRef?.startDownload()
+            }
+            now
+        }
+        val source = object : UpdateSource {
+            override suspend fun fetchLatest(channel: UpdateChannel): Result<UpdateInfo> {
+                // 失败结果已确定、即将交给 manager 处理：武装 hook，等 onFailure 内首次 clock()
+                // 时切到 Downloading —— 这正是 phase 守卫要覆盖的窗口。
+                armClockHook = true
+                return Result.failure(UpdateException(UpdateFailure.NoRelease))
+            }
+        }
+        lateinit var manager: UpdateManager
+        manager = manager(scope = testScope(this), store = store, source = source, clock = clock)
+        managerRef = manager
+        manager.onAppEntered()
+        runCurrent()
+
+        assertNotNull("下载中不得因 verify 的 NoRelease 清缓存", store.cachedInfo())
+        assertTrue(
+            "下载中 phase 不得被 verify 覆盖：${manager.state.value.phase}",
+            manager.state.value.phase is UpdatePhase.Downloading,
+        )
+    }
+
+    /**
+     * 深审 P1：下载状态管道是 UI 感知下载的唯一来源；observe() 首次抛异常后必须自动重连，
+     * 恢复后仍能接收 RUNNING 并进入 Downloading。
+     */
+    @Test
+    fun downloadStateCollectorRecoversAfterObserveFailure() = runTest {
+        val scheduler = FakeScheduler().apply { observeFailuresRemaining = 1 }
+        val environment = FakeEnvironment(workDir = tempFolder.newFolder())
+        val manager = manager(
+            scope = testScope(this),
+            scheduler = scheduler,
+            environment = environment,
+        )
+        advanceUntilIdle() // 首次 observe 抛错 → 记录日志 → 退避后重连
+        assertEquals("必须自动重连 observe 管道", 2, scheduler.observeCalls)
+        assertTrue(
+            "管道异常必须写 environment.log：${environment.logs}",
+            environment.logs.any { it.contains("下载状态管道异常") },
+        )
+
+        scheduler.emit(
+            DownloadWorkState(
+                workId = "recovered-work",
+                status = DownloadWorkState.Status.RUNNING,
+                downloadedBytes = 512,
+                totalBytes = 1024,
+                info = info("0.1.7"),
+            ),
+        )
+        runCurrent()
+        assertTrue(
+            "重连后仍必须处理下载状态：${manager.state.value.phase}",
+            manager.state.value.phase is UpdatePhase.Downloading,
+        )
+    }
+
+    @Test
+    fun expiredWithdrawnForcedReleaseMustNotFallBackToCache() = runTest {
+        val store = FakeStore().apply {
+            saveCached(info("0.1.7", minSupportedVersion = "0.1.7"))
+            cachedAtMillis = 1L
+        }
+        val source = FakeSource(mutableListOf(Result.failure(UpdateException(UpdateFailure.NoRelease))))
+        val manager = manager(scope = testScope(this), source = source, store = store)
+        manager.onAppEntered()
+        advanceUntilIdle()
+        assertNull("404/NoRelease must revoke cached forced release; actual=${manager.state.value.phase}", store.cachedInfo())
+    }
+
 }

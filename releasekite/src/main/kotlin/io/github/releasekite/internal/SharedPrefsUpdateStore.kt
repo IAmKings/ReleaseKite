@@ -23,10 +23,12 @@ import kotlinx.serialization.json.put
  *   `cached_rollout_percent`、`cached_min_supported`、`cached_channel`
  *   （回归 5f598bb：v0.1.15 之前只存旧字段，重启后 forced/灰度丢失）。
  */
-class SharedPrefsUpdateStore(context: Context) : UpdateStore {
+class SharedPrefsUpdateStore internal constructor(context: Context, prefsName: String) : UpdateStore {
+
+    constructor(context: Context) : this(context, PREFS_NAME)
 
     private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     override var lastSuccessAtMillis: Long
         get() = prefs.getLong(KEY_LAST_SUCCESS, 0L)
@@ -92,12 +94,29 @@ class SharedPrefsUpdateStore(context: Context) : UpdateStore {
             },
             rolloutPercent = prefs.getInt(KEY_C_ROLLOUT, 100).coerceIn(0, 100),
             minSupportedVersion = prefs.getString(KEY_C_MIN_SUPPORTED, null),
+            metaUrl = prefs.getString(KEY_C_META_URL, null),
         )
     }
 
     override fun saveCached(info: UpdateInfo) {
+        cachedEditor(info).apply()
+    }
+
+    /** 把下载目标（UpdateInfo）与 WorkRequest id 原子绑定到独立 prefs（单槽）。 */
+    internal fun bindDownloadTarget(workId: String, info: UpdateInfo) {
+        check(cachedEditor(info).putString(KEY_DOWNLOAD_WORK_ID, workId).commit()) {
+            "Could not persist download target"
+        }
+    }
+
+    /** 读取与 [workId] 绑定的下载目标；id 不匹配（旧任务/已替换）返回 null。 */
+    internal fun downloadTarget(workId: String): UpdateInfo? =
+        cachedInfo().takeIf { prefs.getString(KEY_DOWNLOAD_WORK_ID, null) == workId }
+
+    private fun cachedEditor(info: UpdateInfo) =
         prefs.edit()
             .putString(KEY_C_VERSION, info.versionName)
+            .putString(KEY_C_META_URL, info.metaUrl)
             .putString(KEY_C_TAG, info.tagName)
             .putString(KEY_C_TITLE, info.title)
             .putString(KEY_C_NOTES, info.notes)
@@ -112,8 +131,6 @@ class SharedPrefsUpdateStore(context: Context) : UpdateStore {
             .putString(KEY_C_CHANNEL, info.channel.name)
             .putInt(KEY_C_META_SCHEMA, CACHE_META_SCHEMA)
             .putLong(KEY_C_AT, System.currentTimeMillis())
-            .apply()
-    }
 
     override val cachedMetaKnown: Boolean
         get() = prefs.getInt(KEY_C_META_SCHEMA, 0) >= CACHE_META_SCHEMA
@@ -183,6 +200,7 @@ class SharedPrefsUpdateStore(context: Context) : UpdateStore {
     override fun clearCache() {
         prefs.edit()
             .remove(KEY_C_VERSION)
+            .remove(KEY_C_META_URL)
             .remove(KEY_C_TAG)
             .remove(KEY_C_TITLE)
             .remove(KEY_C_NOTES)
@@ -205,6 +223,18 @@ class SharedPrefsUpdateStore(context: Context) : UpdateStore {
 
         /** 契约 §2：独立 prefs 文件名（与宿主其它偏好隔离）。 */
         const val PREFS_NAME = "releasekite_update"
+
+        /**
+         * 下载目标绑定 prefs 文件名（与主状态分离）：
+         * Manager 刷新主缓存不影响进行中下载的归属；Worker/调度器可按任务 id 恢复目标。
+         */
+        const val TARGET_PREFS_NAME = "releasekite_download_target"
+
+        /** 目标绑定 prefs 中记录当前 WorkRequest id 的 key（单槽）。 */
+        const val KEY_DOWNLOAD_WORK_ID = "download_work_id"
+
+        /** 缓存元数据资产地址（update.json）key。 */
+        const val KEY_C_META_URL = "cached_meta_url"
 
         /** 缓存元数据 schema：2 = v0.1.15+（含 rollout/minSupported/channel/cachedAt）。 */
         const val CACHE_META_SCHEMA = 2

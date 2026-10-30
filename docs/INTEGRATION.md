@@ -33,6 +33,13 @@ dependencies {
     // JitPack 多模块坐标：com.github.<owner>.<Repo>:<module>:<tag>
     // Compose UI + Android 适配层 + core（api 传递依赖，一步到位）
     implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+
+    // 宿主自己的 Compose 栈（库仅 api 暴露 compose-ui/ui-graphics；
+    // BOM/material3/activity-compose 等由宿主按自己的 Compose 版本声明）
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.13.0")
 }
 ```
 
@@ -140,8 +147,10 @@ class MainActivity : ComponentActivity() {
 manager.onAppEntered()
 // 每次回到前台：通知被拒或安装权限返回后的自动续装
 manager.onAppResumed()
-// 前后台切换：决定下载完成时自动拉起安装器还是发通知
-ReleaseKite.onForeground(); ReleaseKite.onBackground()
+// 前后台切换：决定下载完成时自动拉起安装器还是发通知。
+// 每个 Activity/窗口在 onStart/onStop 成对调用；内部是引用计数，多 Activity 重叠不会误判。
+ReleaseKite.onForeground() // Activity.onStart / 窗口进入前台
+ReleaseKite.onBackground() // Activity.onStop / 窗口退出前台
 // 渲染：无状态组件，状态与动作全部由宿主提供
 ReleaseKiteUpdateDialog(state = state, actions = actions)
 ```
@@ -250,22 +259,29 @@ class MainActivity : ComponentActivity() {
   下载任务互斥，不会并发下载两个版本；
 - 如果宿主自定义了 `Configuration.Provider` / `WorkerFactory`，必须保证默认
   `ReleaseKiteDownloadWorker(Context, WorkerParameters)` 构造器可被实例化（consumer rules 已保留）；
-- 不要禁用 WorkManager 的默认初始化（`androidx.work.WorkManagerInitializer`）。
+- 不要禁用 WorkManager 的默认初始化（`androidx.work.WorkManagerInitializer`）；
+- **多进程宿主**：`ReleaseKite.initialize` 会创建进程内单例、WorkManager 调度器与 SharedPreferences
+  状态；库未启用 WorkManager 多进程模式，请只在**主进程**初始化/挂 Host，避免子进程重复处理
+  下载状态或重复拉起安装器。若必须多进程，需要宿主自行保证只有主进程调用 `initialize`。
 
 ### 6.3 备份排除
 
-更新状态写在 `SharedPreferences("releasekite_update")` 与 `cacheDir/releasekite/updates/`。
+更新状态写在两个 SharedPreferences 文件中：
+- `releasekite_update`：检查节流/缓存/线路健康/待安装记录；
+- `releasekite_download_target`：本次下载的完整 `UpdateInfo` 与 `workId` 绑定（跨进程恢复下载身份用）。
 `cacheDir` 默认不参与 Auto Backup，但 SharedPreferences 会被备份/迁移。示例应用
-（`sample`）直接 `android:allowBackup="false"`；若你的应用需要备份，请排除该文件：
+（`sample`）直接 `android:allowBackup="false"`；若你的应用需要备份，请排除这两个文件：
 
 ```xml
 <!-- res/xml/backup_rules.xml（Android 12+ 用 dataExtractionRules，12 以下用 fullBackupContent） -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="releasekite_update.xml" />
+        <exclude domain="sharedpref" path="releasekite_download_target.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="releasekite_update.xml" />
+        <exclude domain="sharedpref" path="releasekite_download_target.xml" />
     </device-transfer>
 </data-extraction-rules>
 ```
@@ -285,7 +301,8 @@ class MainActivity : ComponentActivity() {
 - `:releasekite` 已提供 `consumer-rules.pro`，自动保留 WorkManager Worker 构造器；
 - 其它实现均为普通 Kotlin 代码 + `org.json`/`kotlinx.serialization` DOM，无需额外 keep；
 - 若宿主使用 full-mode R8 且遇到 `Missing class` 警告，先确认 WorkManager 是 `runtimeOnly` 还是
-  被 `tools:node="remove"` 移除；`sample` 的 `isMinifyEnabled = false` 只是示例简化，不是必需。
+  被 `tools:node="remove"` 移除；`sample` 的 release 变体已开启 `isMinifyEnabled=true` +
+  `isShrinkResources=true`，是 consumer rules/Worker 在混淆下的持续回归门禁。
 
 ## 7. 发布侧准备（约 1 分钟）
 

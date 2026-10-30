@@ -31,7 +31,10 @@ import io.github.releasekite.core.UpdateUiState
 /**
  * 设置页「检查更新」行（无状态版）：状态内联展示，整行可点 = `manager.checkNow()`。
  *
- * 与源实现一致：下载/校验进行中不可点击（避免打断不可取消的下载弹窗），
+ * 下载/校验/等待安装权限进行中不可点击：
+ * - Downloading/Verifying 避免打断不可取消的下载弹窗；
+ * - NeedInstallPermission 时 `UpdateManager.checkNow()` 会被「下载进行中」守卫忽略
+ *   （core 的 isDownloadInProgressPhase 包含该 phase），保持可点只会产生死点击。
  * 其余 phase 点击都触发一次手动检查（取消在途检查并生成新任务）。
  */
 @Composable
@@ -41,7 +44,9 @@ fun ReleaseKiteUpdateRow(
     modifier: Modifier = Modifier,
 ) {
     val phase = state.phase
-    val clickEnabled = phase !is UpdatePhase.Downloading && phase !is UpdatePhase.Verifying
+    val clickEnabled = phase !is UpdatePhase.Downloading &&
+        phase !is UpdatePhase.Verifying &&
+        phase !is UpdatePhase.NeedInstallPermission
     val title = stringResource(R.string.releasekite_row_title)
     val status = rowStatusText(phase, state.currentVersionName)
     Card(

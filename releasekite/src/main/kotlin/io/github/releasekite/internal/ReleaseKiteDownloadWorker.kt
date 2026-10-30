@@ -15,6 +15,7 @@ import io.github.releasekite.core.HttpUpdateDownloader
 import io.github.releasekite.core.ReleaseKiteConfig
 import io.github.releasekite.core.UpdateException
 import io.github.releasekite.core.UpdateFailure
+import io.github.releasekite.core.UpdateInfo
 import io.github.releasekite.core.isNewerVersion
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
@@ -67,8 +68,15 @@ class ReleaseKiteDownloadWorker(
 
         val context = applicationContext
         val notifier = AndroidUpdateNotifier(context)
-        notifier.prepare()
-        setForeground(foregroundInfo(notifier.progressNotification(request.info, 0L, request.info.apkSizeBytes)))
+        // 三方深审 P1：Android 12+ 后台 FGS 启动受限时 prepare/setForeground 会抛异常；
+        // 若逃出 doWork()，WorkManager 会把任务置终态 FAILED 且不带 failure Data（Manager 误报
+        // Network）。这里降级为 best-effort：失败只记日志，继续无 FGS 下载（进度通知不可见）。
+        startForegroundBestEffort(
+            notifier = notifier,
+            info = request.info,
+            setForeground = { notification -> setForeground(foregroundInfo(notification)) },
+            log = environment::log,
+        )
 
         val store = SharedPrefsUpdateStore(context)
         val targetDir = ReleaseKitePaths.updatesDir(context)
@@ -188,5 +196,33 @@ class ReleaseKiteDownloadWorker(
 
     private companion object {
         const val NOTIFY_INTERVAL_MS = 1_000L
+    }
+}
+
+/**
+ * 前台服务通知启动的 best-effort 封装（三方深审 P1）。
+ *
+ * 背景：Android 12+ 对后台启动前台服务有严格限制，`setForeground()` 可能抛
+ * `ForegroundServiceStartNotAllowedException` 等运行时异常；若任其逃出 `doWork()`，
+ * WorkManager 会直接把 Worker 置为终态 FAILED 且没有 `failure` 输出 Data，
+ * Manager 只能回退成 `UpdateFailure.Network`——把「通知没起来」误报成「网络失败」。
+ *
+ * 语义：
+ * - 非取消异常 → 记日志后继续下载（通知/进度不可见，但 APK 下载、校验、待安装记录不受影响）；
+ * - [CancellationException] → 原样抛出，Worker 被取消时保持 CANCELLED 语义。
+ */
+internal suspend fun startForegroundBestEffort(
+    notifier: AndroidUpdateNotifier,
+    info: UpdateInfo,
+    setForeground: suspend (Notification) -> Unit,
+    log: (String, Throwable?) -> Unit,
+) {
+    try {
+        notifier.prepare()
+        setForeground(notifier.progressNotification(info, 0L, info.apkSizeBytes))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log("ReleaseKite：前台服务通知启动失败，降级为无 FGS 下载（下载/校验/待安装记录不受影响）", e)
     }
 }

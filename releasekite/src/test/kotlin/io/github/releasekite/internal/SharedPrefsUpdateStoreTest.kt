@@ -33,9 +33,15 @@ class SharedPrefsUpdateStoreTest {
         Context.MODE_PRIVATE,
     )
 
+    private val targetPrefs = context.getSharedPreferences(
+        SharedPrefsUpdateStore.TARGET_PREFS_NAME,
+        Context.MODE_PRIVATE,
+    )
+
     @Before
     fun resetPrefs() {
         prefs.edit().clear().commit()
+        targetPrefs.edit().clear().commit()
     }
 
     @Test
@@ -125,4 +131,63 @@ class SharedPrefsUpdateStoreTest {
         assertEquals(0L, store.cachedAtMillis)
         assertEquals(0, prefs.getInt("cached_meta_schema", 0))
     }
+
+    @Test
+    fun cachedInfoRoundTripsMetaUrl() {
+        val store = SharedPrefsUpdateStore(context)
+        val info = sampleInfo(versionName = "1.1.0", metaUrl = "https://github.com/o/r/releases/download/v1.1.0/update.json")
+
+        store.saveCached(info)
+
+        // R1 fix：metaUrl 必须持久化，否则冷启动强制校验拿不到 update.json 地址。
+        assertEquals(info.metaUrl, store.cachedInfo()!!.metaUrl)
+    }
+
+    @Test
+    fun downloadTargetIsIsolatedFromMainCacheRefresh() {
+        val targetStore = SharedPrefsUpdateStore(context, SharedPrefsUpdateStore.TARGET_PREFS_NAME)
+        val bound = sampleInfo(versionName = "2.0.0")
+        targetStore.bindDownloadTarget("work-1", bound)
+
+        // 主缓存刷新成更新版本，不能污染进行中任务的 target（独立 prefs 文件）。
+        SharedPrefsUpdateStore(context).saveCached(sampleInfo(versionName = "3.0.0"))
+
+        // 重新构造实例（模拟进程重启）后仍能按 workId 恢复。
+        val restored = SharedPrefsUpdateStore(context, SharedPrefsUpdateStore.TARGET_PREFS_NAME)
+        assertEquals(bound, restored.downloadTarget("work-1"))
+        assertNull("workId 不匹配时不能返回当前缓存（旧任务归属判定）", restored.downloadTarget("work-2"))
+    }
+
+    @Test
+    fun downloadTargetPersistsFullMetadataForForcedInstall() {
+        val targetStore = SharedPrefsUpdateStore(context, SharedPrefsUpdateStore.TARGET_PREFS_NAME)
+        val bound = sampleInfo(
+            versionName = "2.2.0",
+            metaUrl = "https://github.com/o/r/releases/download/v2.2.0/update.json",
+        ).copy(rolloutPercent = 25, minSupportedVersion = "2.0.0", channel = UpdateChannel.BETA)
+
+        targetStore.bindDownloadTarget("work-full", bound)
+
+        val restored = SharedPrefsUpdateStore(context, SharedPrefsUpdateStore.TARGET_PREFS_NAME)
+            .downloadTarget("work-full")
+        assertEquals(bound, restored)
+        assertTrue("目标记录也必须保留强制/灰度元数据", UpdateRollout.isForced(restored!!, "1.9.0"))
+    }
+
+    private fun sampleInfo(
+        versionName: String,
+        metaUrl: String? = null,
+    ) = UpdateInfo(
+        versionName = versionName,
+        tagName = "v$versionName",
+        title = "t",
+        notes = "n",
+        publishedAt = null,
+        htmlUrl = "https://github.com/releasekite/ReleaseKite/releases",
+        apkUrl = "https://github.com/releasekite/ReleaseKite/releases/download/v$versionName/app.apk",
+        apkSizeBytes = 1L,
+        sha256 = "a".repeat(64),
+        sha256Url = null,
+        metaUrl = metaUrl,
+    )
 }

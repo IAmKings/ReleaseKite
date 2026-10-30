@@ -13,7 +13,7 @@
 | Compose UI | `releasekite-compose/src/test` | Robolectric + `createComposeRule` | 弹窗各 phase/按钮/取消规则/testTag、设置行、设置区、中英文案、格式化 |
 | 真机 | 宿主应用（或接入发布链路的 sample） | 人工 | 系统安装器、未知来源权限、通知、弱网/镜像、跨进程续传、OEM 差异 |
 
-## 2. 自动化矩阵（当前 192 个用例 = 94 个迁移 + 98 个新增）
+## 2. 自动化矩阵（当前 226 个用例 = 94 个迁移 + 132 个新增）
 
 ### 2.1 迁移用例（94，逐条对应 ZhiBox 行为，详见 [`MIGRATION_ZHIBOX.md`](MIGRATION_ZHIBOX.md)）
 
@@ -21,28 +21,33 @@
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
-| `:releasekite-core` `AppUpdateManagerTest` | 33（+1 新增） | 状态机：节流、手动检查代际、下载成功/失败、安装、dismiss、强制/灰度、历史 FAILED、成功去重、看门狗、迟到入队 |
-| `:releasekite-core` `UpdateApiAndDownloaderTest` | 14 | API 200/404/403 限流、元数据直连/重定向/镜像/坏 JSON、下载镜像回退、SHA 不符、无 checksum、Content-Range |
+| `:releasekite-core` `AppUpdateManagerTest` | 33（+8 新增） | 状态机：节流、手动检查代际、下载成功/失败、安装、dismiss、强制/灰度、历史 FAILED、成功去重、看门狗、迟到入队 |
+| `:releasekite-core` `UpdateApiAndDownloaderTest` | 14（+3 新增） | API 200/404/403 限流、元数据直连/重定向/镜像/坏 JSON、下载镜像回退、SHA 不符、无 checksum、Content-Range、URL 安全负向 |
 | `:releasekite-core` `UpdateModelsTest` | 23 | 版本解析/预发布排序、Release 解析（digest/.sha256/缺资产/多资产）、markdown 清洗、启动策略 |
 | `:releasekite-core` `UpdateRolloutTest` | 6 | 分桶确定性/边界、灰度资格、强制判定、元数据 schema 校验 |
 | `:releasekite-core` `UpdateRoutesTest` | 6 | 直连优先/冷却、镜像排序、失败冷却、成功清零 |
-| `:releasekite` `SharedPrefsUpdateStoreTest` | 2（+1 新增） | 缓存元数据 save→read 往返、旧缓存无 schema 标记未知 |
+| `:releasekite` `SharedPrefsUpdateStoreTest` | 2（+4 新增） | 缓存元数据 save→read 往返、旧缓存无 schema 标记未知、target prefs 独立绑定/恢复 |
 | `:releasekite-compose` `ReleaseKiteUpdateDialogTest` | 10（+12 新增） | 弹窗 5 态、强制/失败逃生、设置行状态、testTag、空 notes、按钮回调 |
 
-### 2.2 新增用例（98，ReleaseKite 泛化与 UI 细节）
+### 2.2 新增用例（132，ReleaseKite 泛化、加固与 UI 细节）
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
 | `:releasekite-core` `ReleaseKiteConfigTest` | 7 | 配置校验：仓库格式、镜像格式、资产规则非空、间隔/阈值、文件前缀清洗、默认值对齐契约 |
 | `:releasekite-core` `InMemoryUpdateStoreTest` | 6 | 测试 store 的接口契约（默认值/可初始化/缓存时间/routeHealth 替换） |
 | `:releasekite-core` `UpdateConfigGeneralizationTest` | 12 | 自定义 APK pattern/checksum/metadata 后缀、可选 checksum（大小校验）、自定义超时/间隔、UA/镜像透传 |
-| `:releasekite-core` `AppUpdateManagerTest` | +1 | 后台完成发通知且不拉起安装器 |
-| `:releasekite` `SharedPrefsUpdateStoreTest` | +1 | `cache_meta_schema` 与 `cached_at` 的持久化/清理 |
-| `:releasekite` `UpdateDownloadContractTest` | 5 | Worker input/output 键与类型、失败编解码（`Http:code:rateLimited`）、缺 version 快速失败、常量对齐契约 |
-| `:releasekite` `WorkManagerUpdateDownloadSchedulerTest` | 3 | 入队前同步回调 workId、无 Network/Storage 约束、按 workId 精确取消 / 无 id 取消唯一任务 |
+| `:releasekite-core` `UpdateApiAndDownloaderTest` 新增部分 | 3 | 安全链负向：非 https / 非白名单 host / 非本仓库 release 路径 → `IncompleteRelease`（建连前拒绝） |
+| `:releasekite-core` `AppUpdateManagerTest` | 8 | 后台完成通知；NoRelease 撤回强制缓存（新鲜/过期两路径）；恢复下载失败保持强制；禁用 Beta 不展示旧 Beta 缓存；冷启动与恢复下载身份竞争；`verifyCachedForced` 下载期 phase 守卫；状态管道异常恢复；看门狗/代际加固回归 |
+| `:releasekite` `SharedPrefsUpdateStoreTest` | 4 | `cache_meta_schema`/`cached_at` 持久化清理、`cached_meta_url`、target prefs 绑定与不串版本 |
+| `:releasekite` `UpdateDownloadContractTest` | 6 | Worker input/output 键、失败固定字符串编解码（逐类型 wire code）、缺 version 快速失败、常量对齐契约 |
+| `:releasekite` `WorkManagerUpdateDownloadSchedulerTest` | 11 | 入队前同步 workId、无约束、精确取消、legacy 无目标取消、target 跨调度器/缓存刷新恢复、WAITING/RUNNING/SUCCEEDED target 映射、flow 异常不终止、并发 enqueue |
 | `:releasekite` `ReleaseKiteFacadeTest` | 1 | `initialize` 幂等、读取宿主版本名/版本号 |
+| `:releasekite` `AndroidApkValidatorSignatureTest` | 3 | API 28+ `signingInfo` 优先、缺失时回退 deprecated `signatures`、无签名信息返回空 |
+| `:releasekite` `AndroidUpdateInstallerTest` | 2 | 安装权限 API 守卫、FileProvider/Intent 路径 |
+| `:releasekite` `ReleaseKiteDownloadWorkerForegroundTest` | 3 | Android 12+ FGS 启动异常降级、不把通知失败误报成 Network、取消语义 |
+| `:releasekite` `ReleaseKiteForegroundTrackerTest` | 3 | 多 Activity 引用计数：A/B 重叠保持前台、全部 stop 后后台、clamp 不为负 |
 | `:releasekite-compose` `ReleaseKiteUpdateDialogTest` 新增部分 | 12 | testTag、空 notes 占位、无 publishedAt、按钮回调、失败文案全覆盖 |
-| `:releasekite-compose` `ReleaseKiteUpdateRowTest` | 12 | 行内 10 种 phase 文案、下载/校验不可点、点击触发检查 |
+| `:releasekite-compose` `ReleaseKiteUpdateRowTest` | 13 | 行内 phase 文案、下载/校验/待安装权限不可点、点击触发检查 |
 | `:releasekite-compose` `ReleaseKiteSettingsSectionTest` | 8 | 两个开关回调、Beta 隐藏、重置线路、线路健康文案 |
 | `:releasekite-compose` `ReleaseKiteUpdateDialogZhTest` | 10 | 中文资源：弹窗/强制/失败/权限/行/设置区 |
 | `:releasekite-compose` `ReleaseKiteFormattingTest` | 5 | 字节/日期格式化、进度百分比边界 |
@@ -57,19 +62,24 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 # 1) 三个模块单测（CI 同款）
 ./gradlew :releasekite-core:test :releasekite:testDebugUnitTest :releasekite-compose:testDebugUnitTest
 
-# 2) 示例应用构建
+# 2) Debug 示例构建
 ./gradlew :sample:assembleDebug
 
-# 3) lint（error 级阻断）
-./gradlew :releasekite:lintDebug :releasekite-compose:lintDebug :sample:lintDebug
+# 3) Release 门禁：库 AAR + sample（R8/minify + resource shrink）
+./gradlew :releasekite:assembleRelease :releasekite-compose:assembleRelease :sample:assembleRelease
 
-# 4) 发布到本地 Maven（验证坐标/产物）
-./gradlew publishToMavenLocal
+# 4) lint（error 级阻断；debug + release 变体）
+./gradlew :releasekite:lintDebug :releasekite-compose:lintDebug :sample:lintDebug
+./gradlew :releasekite:lintRelease :releasekite-compose:lintRelease :sample:lintRelease
+
+# 5) 发布到本地 Maven（验证坐标/产物）
+./gradlew :releasekite-core:publishToMavenLocal :releasekite:publishToMavenLocal :releasekite-compose:publishToMavenLocal
 ```
 
-CI（`.github/workflows/ci.yml`）在每次 push/PR 执行：JDK 21 + Gradle wrapper 校验 →
-三模块单测 → `:sample:assembleDebug` → lint；任一步失败会上传
-`build/reports/**` 与 `build/test-results/**`。
+CI（`.github/workflows/ci.yml`）在每次 push/PR 执行：JDK 21 + Android SDK + Gradle wrapper 校验 →
+三模块单测 → `:sample:assembleDebug` → debug lint → 库 `assembleRelease` + `:sample:assembleRelease`
+（R8/资源裁剪门禁）→ release lint → 三模块 `publishToMavenLocal`；任一步失败会上传
+`build/reports/**`、`build/test-results/**` 与构建产物报告。
 
 **本地门禁通过标准**：以上命令全部 `BUILD SUCCESSFUL`，无失败/错误级 lint。不要求
 `clean`（构建缓存在 CI 有独立环境；本地增量即可）。
@@ -198,13 +208,17 @@ CI（`.github/workflows/ci.yml`）在每次 push/PR 执行：JDK 21 + Gradle wra
 - **force-stop ≠ Home**：Home/锁屏 WorkManager 继续；force-stop 会取消任务，重进后恢复续传；
 - **降级不覆盖**：versionCode 降低会被系统拒绝；历史版本测试先卸载；
 - **示例下载会被拒绝**：`sample` 下载真实 ZhiBox APK 时包名/签名不符属于预期安全拦截；
-- **`assembleDebug` 不 clean**：本地迭代直接增量构建即可；CI 环境全新构建。
+- **`assembleDebug` 不 clean**：本地迭代直接增量构建即可；CI 环境全新构建；
+- **release 变体也要跑**：sample 的 `assembleRelease` 开启 R8/minify + 资源裁剪，
+  是库 consumer rules/WorkManager Worker 在混淆下可用的回归门禁（不能只测 debug）；
+- **示例 demo 关闭元数据**：sample 的 `metadataAssetSuffix = null` 是防止 `0.0.1` 命中
+  真实仓库 `minSupportedVersion` 而被强制锁死；真实接入不要照抄。
 
 ## 6. 当前自动化基线（0.1.0）
 
-- `:releasekite-core:test`：108 例（线性 JVM，秒级）；
-- `:releasekite:testDebugUnitTest`：12 例（Robolectric/WorkManager）；
-- `:releasekite-compose:testDebugUnitTest`：72 例（Robolectric Compose，中英双语）；
-- 合计 192 例，0 失败为门禁。
+- `:releasekite-core:test`：118 例（线性 JVM，秒级）；
+- `:releasekite:testDebugUnitTest`：35 例（Robolectric/WorkManager）；
+- `:releasekite-compose:testDebugUnitTest`：73 例（Robolectric Compose，中英双语）；
+- 合计 226 例，0 失败为门禁。
 
 > 用例数随实现演进可能增加；以测试源码中的 `@Test` 计数与 CI 报告为准。

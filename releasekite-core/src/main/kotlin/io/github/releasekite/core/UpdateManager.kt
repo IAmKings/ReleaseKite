@@ -2,14 +2,22 @@ package io.github.releasekite.core
 
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** 下载状态管道异常后的重连退避（深审 P1，2026-10-30）。 */
+private const val WORK_STATE_RECONNECT_DELAY_MS = 1_000L
 
 /**
  * 应用内更新的全局服务（宿主 App 作用域单例）。
@@ -25,6 +33,13 @@ import kotlinx.coroutines.launch
  * - ReleaseUnavailable：清缓存/清强制/一次性可关闭失败（0ea927d）；
  * - 接管下载态：进程重启后首个 WAITING/RUNNING 被接管，冷启动检查不得覆盖恢复中的下载；
  * - 重试/取消规则：forced 不可 dismiss、连续失败达到阈值后允许暂时退出。
+ *
+ * 2026-10-30 发布前深审加固：
+ * - 唯一下载状态管道带异常恢复循环（CancellationException 重抛、其它异常记日志后短延迟重连，
+ *   防止一次 observe 异常导致状态永久静默）；
+ * - 跨线程字段（taskId/downloadGeneration/downloadFailureCount/activeForced/Job 引用/verify 时间戳）
+ *   统一原子类型或 `@Volatile`，避免 UI/IO/看门狗并发下的丢更新与错误代际判断；
+ * - 强制缓存后台校验的 NoRelease 处理带 phase 守卫，verify 在途期间进入下载/待安装时不得清缓存或覆盖 phase。
  *
  * 与源的替换点（契约 §1.9）：
  * - `BuildConfig.VERSION_NAME` → [UpdateEnvironment.currentVersionName]；
@@ -56,9 +71,17 @@ class UpdateManager(
     val state: StateFlow<UpdateUiState> = _state.asStateFlow()
 
     private val entered = AtomicBoolean(false)
-    private var taskId = 0L
+
+    // 深审 P2：跨线程字段统一原子类型（UI 线程、下载/检查协程、看门狗并发读写）。
+    private val taskId = AtomicLong(0L)
+
+    @Volatile
     private var checkJob: Job? = null
+
+    @Volatile
     private var verifyCachedJob: Job? = null
+
+    @Volatile
     private var downloadWatchdogJob: Job? = null
 
     /** 当前下载对应的后台任务 id；旧任务回调不能影响新重试。 */
@@ -69,11 +92,11 @@ class UpdateManager(
      * 每次 startDownload 递增；迟到入队结果/看门狗只能操作自己的代际
      * （a253ff9 引入、746b297 补强：异常/await 返回/看门狗均校验代际）。
      */
-    private var downloadGeneration = 0L
+    private val downloadGeneration = AtomicLong(0L)
 
     /** 强制更新下载失败次数（达到配置阈值后允许暂时退出，避免锁死）。 */
-    private var downloadFailureCount = 0
-    private var activeForced = false
+    private val downloadFailureCount = AtomicInteger(0)
+    private val activeForced = AtomicBoolean(false)
 
     /**
      * 本进程是否正在跟踪一次下载。
@@ -82,16 +105,21 @@ class UpdateManager(
      */
     @Volatile
     private var downloadActiveInProcess = false
+    @Volatile
     private var lastForcedVerifyAtMillis = 0L
     /** 安装流程防重入（5f598bb）：并发 onResume/成功回调只允许一次拉起安装器。 */
     private val installInProgress = AtomicBoolean(false)
 
     init {
+        // 先归一化缓存，防止冷启动协程先读到旧 Beta 目标。
+        if (!config.betaChannelEnabled && store.channel == UpdateChannel.BETA) {
+            store.clearCache()
+            store.channel = UpdateChannel.STABLE
+            store.lastSuccessAtMillis = 0L
+            store.lastAttemptAtMillis = 0L
+            store.dismissedVersion = null
+        }
         scope.launch {
-            // Beta 通道关闭时把旧偏好归一化回 STABLE（配置是最终事实来源）。
-            if (!config.betaChannelEnabled && store.channel == UpdateChannel.BETA) {
-                store.channel = UpdateChannel.STABLE
-            }
             _state.update {
                 it.copy(
                     autoCheckEnabled = store.autoCheckEnabled,
@@ -101,9 +129,24 @@ class UpdateManager(
                 )
             }
         }
-        // 后台下载状态是下载阶段的单一事实来源（跨进程恢复）：订阅一次即可。
+        // 后台下载状态是下载阶段的单一事实来源（跨进程恢复）。
+        // 深审 P1：唯一管道必须有异常恢复——任何 observe/collect/onWorkState 异常都不能
+        // 让下载状态永久静默；CancellationException 必须原样重抛（scope 取消语义）。
         scope.launch {
-            scheduler.observe().collect { work -> onWorkState(work) }
+            while (true) {
+                try {
+                    scheduler.observe().collect { work -> onWorkState(work) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    environment.log(
+                        "下载状态管道异常，${WORK_STATE_RECONNECT_DELAY_MS}ms 后重连",
+                        e,
+                    )
+                }
+                // 正常结束或异常后都短暂退避再重连，避免坏实现导致热循环。
+                delay(WORK_STATE_RECONNECT_DELAY_MS)
+            }
         }
     }
 
@@ -179,24 +222,24 @@ class UpdateManager(
 
     /** 设置里的「检查更新」：取消在途检查 + 代际 +1，强制重查。 */
     fun checkNow() {
-        startCheck(UpdateTrigger.MANUAL)
+        if (!isDownloadInProgressPhase(_state.value.phase)) startCheck(UpdateTrigger.MANUAL)
     }
 
     private fun startCheck(trigger: UpdateTrigger) {
-        val id = ++taskId
+        val id = taskId.incrementAndGet()
         checkJob?.cancel()
         _state.update { it.copy(phase = UpdatePhase.Checking(trigger)) }
         checkJob = scope.launch {
             val result = source.fetchLatest(store.channel)
             // 任务代际：过期任务（含成功/失败）一律丢弃，不写状态。
-            if (id != taskId) return@launch
+            if (id != taskId.get()) return@launch
             result.fold(
                 onSuccess = { info ->
                     store.lastSuccessAtMillis = clock()
                     store.lastAttemptAtMillis = clock()
                     store.saveCached(info)
                     // 新检查结果代表新一轮更新：清空上一次强制更新的失败计数。
-                    downloadFailureCount = 0
+                    downloadFailureCount.set(0)
                     val newer = isNewerVersion(info.versionName, environment.currentVersionName)
                     val forced = UpdateRollout.isForced(info, environment.currentVersionName)
                     val eligible = UpdateRollout.isEligible(store.installId, info)
@@ -228,6 +271,7 @@ class UpdateManager(
                 onFailure = { error ->
                     val failure = (error as? UpdateException)?.failure ?: UpdateFailure.Network
                     store.lastAttemptAtMillis = clock()
+                    if (failure == UpdateFailure.NoRelease) store.clearCache()
                     val fallbackCached = if (trigger == UpdateTrigger.AUTO) {
                         store.cachedInfo()?.takeIf {
                             isNewerVersion(it.versionName, environment.currentVersionName)
@@ -283,7 +327,7 @@ class UpdateManager(
             store.lastSuccessAtMillis = 0L
             store.lastAttemptAtMillis = 0L
             store.dismissedVersion = null
-            taskId++
+            taskId.incrementAndGet()
             checkJob?.cancel()
             _state.update { it.copy(channel = channel, phase = UpdatePhase.Idle) }
         }
@@ -306,7 +350,7 @@ class UpdateManager(
         clearPendingInstall()
         store.installerLaunchedVersion = null
         store.consumedWorkId = null
-        activeForced = available.forced
+        activeForced.set(available.forced)
         downloadActiveInProcess = true
         activeDownloadWorkId = null
         cancelDownloadWatchdog()
@@ -316,7 +360,7 @@ class UpdateManager(
                 forcedEscapeAllowed = false,
             )
         }
-        val generation = ++downloadGeneration
+        val generation = downloadGeneration.incrementAndGet()
         // 进入下载态立即武装启动看门狗（不能等 WAITING 回调，异步入队失败时也要能恢复）。
         armDownloadWatchdog(info, workId = null, generation = generation)
         scope.launch {
@@ -334,7 +378,7 @@ class UpdateManager(
                     ),
                 ) { id ->
                     boundWorkId = id
-                    if (generation == downloadGeneration) {
+                    if (generation == downloadGeneration.get()) {
                         activeDownloadWorkId = id
                     } else {
                         // 迟到入队只清理自己的任务，不能覆盖/取消新代际。
@@ -342,14 +386,14 @@ class UpdateManager(
                     }
                 }
                 // await 返回时如果已被看门狗/新重试淘汰，只清理自己的任务。
-                if (generation != downloadGeneration) {
+                if (generation != downloadGeneration.get()) {
                     boundWorkId?.let { scheduler.cancel(it) }
                 } else if (_state.value.phase !is UpdatePhase.Downloading) {
                     boundWorkId?.let { scheduler.cancel(it) }
                     activeDownloadWorkId = null
                 }
             } catch (e: Exception) {
-                if (generation != downloadGeneration) return@launch
+                if (generation != downloadGeneration.get()) return@launch
                 environment.log("更新下载入队失败", e)
                 cancelDownloadWatchdog()
                 activeDownloadWorkId = null
@@ -363,11 +407,17 @@ class UpdateManager(
 
     private suspend fun onWorkState(work: DownloadWorkState) {
         if (!claimWorkEvent(work)) return
+        val target = work.info ?: currentActionInfo() ?: store.cachedInfo()
+        if (target != null) {
+            activeForced.set(
+                UpdateRollout.isForced(target, environment.currentVersionName),
+            )
+        }
         when (work.status) {
             DownloadWorkState.Status.IDLE -> Unit
 
             DownloadWorkState.Status.WAITING -> {
-                val info = currentActionInfo() ?: store.cachedInfo() ?: return
+                val info = target ?: return
                 downloadActiveInProcess = true
                 _state.update { current ->
                     if (current.phase is UpdatePhase.Downloading) {
@@ -376,12 +426,12 @@ class UpdateManager(
                         current.copy(phase = UpdatePhase.Downloading(info, 0L, info.apkSizeBytes))
                     }
                 }
-                armDownloadWatchdog(info, work.workId, downloadGeneration)
+                armDownloadWatchdog(info, work.workId, downloadGeneration.get())
             }
 
             DownloadWorkState.Status.RUNNING -> {
                 cancelDownloadWatchdog()
-                val info = currentActionInfo() ?: store.cachedInfo() ?: return
+                val info = target ?: return
                 downloadActiveInProcess = true
                 _state.update { current ->
                     // 下载任务已在运行：即使冷启动检查尚在 Checking，也以真实下载态为准。
@@ -393,17 +443,17 @@ class UpdateManager(
 
             DownloadWorkState.Status.SUCCEEDED -> {
                 cancelDownloadWatchdog()
-                downloadGeneration++
+                downloadGeneration.incrementAndGet()
                 downloadActiveInProcess = false
                 activeDownloadWorkId = null
                 // 只取消当前任务；不要取消唯一任务队列，否则可能误伤刚重试的新任务。
                 scheduler.cancel(work.workId)
-                handleDownloadSucceeded(work.apkPath, work.workId)
+                handleDownloadSucceeded(work.apkPath, work.workId, target)
             }
 
             DownloadWorkState.Status.FAILED, DownloadWorkState.Status.CANCELLED -> {
                 cancelDownloadWatchdog()
-                downloadGeneration++
+                downloadGeneration.incrementAndGet()
                 if (!downloadActiveInProcess) {
                     // 历史会话的 FAILED/CANCELLED（进程重启后回放，4ff01e7）：
                     // 静默清理，不再用缓存信息弹「更新失败」。
@@ -422,7 +472,7 @@ class UpdateManager(
                 }
                 downloadActiveInProcess = false
                 activeDownloadWorkId = null
-                val info = currentActionInfo() ?: store.cachedInfo()
+                val info = target
                 clearPendingInstall()
                 // 失败弹窗展示后同样取消该任务；重试会重新入队，不再回放旧 FAILED。
                 scheduler.cancel(work.workId)
@@ -470,8 +520,7 @@ class UpdateManager(
         }
     }
 
-    private suspend fun handleDownloadSucceeded(apkPath: String?, workId: String?) {
-        val info = currentActionInfo() ?: store.cachedInfo()
+    private suspend fun handleDownloadSucceeded(apkPath: String?, workId: String?, info: UpdateInfo?) {
         if (info == null) {
             // 无对应更新信息：旧任务残留，静默清理，不能弹失败。
             cleanupStaleDownload(apkPath, workId)
@@ -635,10 +684,10 @@ class UpdateManager(
         val now = clock()
         if (now - lastForcedVerifyAtMillis < config.autoRetryIntervalMs) return
         lastForcedVerifyAtMillis = now
-        val id = taskId
+        val id = taskId.get()
         verifyCachedJob = scope.launch {
             val result = source.fetchLatest(store.channel)
-            if (id != taskId) return@launch
+            if (id != taskId.get()) return@launch
             if (_state.value.phase !is UpdatePhase.Available) return@launch
             result.onSuccess { latest ->
                 store.lastSuccessAtMillis = clock()
@@ -668,9 +717,19 @@ class UpdateManager(
                     }
                 }
                 _state.update { it.copy(phase = phase, lastCheckAtMillis = clock()) }
-            }.onFailure {
-                // 离线/网络异常：保留缓存强制，退避窗口内不再重复后台校验（手动检查不受限）。
+            }.onFailure { error ->
+                // 先持久化失败尝试时间（节流；与源 `store.lastAttemptAtMillis = clock()` 一致）。
                 store.lastAttemptAtMillis = clock()
+                // 深审 P1：NoRelease（Release 已删除/回滚）应撤销缓存强制提示；
+                // 但 verify 在途期间用户可能已开始下载/进入待安装/校验，此时清缓存或置 Idle 会
+                // 覆盖真实下载态——只有仍停留在 Available（强制提示本身）才允许关闭。
+                if ((error as? UpdateException)?.failure == UpdateFailure.NoRelease &&
+                    _state.value.phase is UpdatePhase.Available
+                ) {
+                    store.clearCache()
+                    _state.update { it.copy(phase = UpdatePhase.Idle) }
+                }
+                // 离线/其它网络异常：保留缓存强制，退避窗口内不再重复后台校验（手动检查不受限）。
             }
         }
     }
@@ -679,11 +738,14 @@ class UpdateManager(
         if (downloadWatchdogJob?.isActive == true) return
         downloadWatchdogJob = scope.launch {
             delay(config.downloadStartTimeoutMs)
-            if (generation != downloadGeneration) return@launch
+            // 深审 P2：delay 是被取消点，但仍显式 ensureActive，避免边界情况下
+            // 已取消看门狗继续走失败逻辑。
+            currentCoroutineContext().ensureActive()
+            if (generation != downloadGeneration.get()) return@launch
             if (_state.value.phase is UpdatePhase.Downloading) {
                 // 异步入队失败/后台调度长时间不启动：主动失败并取消任务，
                 // 避免不可取消的「0%」界面卡死（4c2a56c）。先使代际失效，迟到的入队结果只能清理自己。
-                downloadGeneration++
+                downloadGeneration.incrementAndGet()
                 val currentId = workId ?: activeDownloadWorkId
                 scheduler.cancel(currentId)
                 activeDownloadWorkId = null
@@ -741,7 +803,7 @@ class UpdateManager(
             clearPendingInstall()
             scheduler.cancel()
             downloadActiveInProcess = false
-            activeForced = false
+            activeForced.set(false)
             _state.update {
                 it.copy(
                     phase = UpdatePhase.DownloadFailed(
@@ -760,9 +822,10 @@ class UpdateManager(
             cleanupStaleDownload(null)
             return
         }
-        val forced = activeForced || (_state.value.phase as? UpdatePhase.DownloadFailed)?.forced == true
-        downloadFailureCount++
-        val escapeAllowed = forced && downloadFailureCount >= config.forcedEscapeFailures
+        val forced = activeForced.get() ||
+            (_state.value.phase as? UpdatePhase.DownloadFailed)?.forced == true
+        val failures = downloadFailureCount.incrementAndGet()
+        val escapeAllowed = forced && failures >= config.forcedEscapeFailures
         _state.update {
             it.copy(
                 phase = UpdatePhase.DownloadFailed(

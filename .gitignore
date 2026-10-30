@@ -17,7 +17,6 @@ captures/
 *.jks
 *.keystore
 *.p12
-release/
 
 # 本库测试/示例产物
 dist/

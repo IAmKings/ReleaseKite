@@ -5,10 +5,12 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
 import io.github.releasekite.core.ReleaseKiteConfig
 import io.github.releasekite.internal.AndroidUpdateEnvironment
+import io.github.releasekite.internal.ReleaseKiteForegroundTracker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,6 +29,12 @@ import org.robolectric.annotation.Config
 class ReleaseKiteFacadeTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun resetForegroundTracker() {
+        // 引用计数是进程级单例：与其他测试类互相隔离（Robolectric 共用 sandbox classloader）。
+        ReleaseKiteForegroundTracker.reset()
+    }
 
     @Test
     fun initializeIsIdempotentAndReadsHostVersion() {

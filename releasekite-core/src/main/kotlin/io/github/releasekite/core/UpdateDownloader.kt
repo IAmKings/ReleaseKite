@@ -1,5 +1,6 @@
 package io.github.releasekite.core
 
+import io.github.releasekite.core.internal.GITHUB_HOSTS
 import io.github.releasekite.core.internal.contentRangeStart
 import io.github.releasekite.core.internal.readLimited
 import io.github.releasekite.core.internal.sanitizeFileComponent
@@ -41,7 +42,8 @@ interface UpdateDownloader {
 /**
  * GitHub Release APK 下载器（逐段移植 ZhiBox `HttpUpdateDownloader`）。
  *
- * 安全/稳定性约束（APP_UPDATE_SPEC §4，全部保留）：
+ * 安全/稳定性约束（APP_UPDATE_SPEC §4，全部保留）；host 白名单与
+ * [`io.github.releasekite.core.internal.GITHUB_HOSTS`] 单一来源（深审 P2 去重，避免两处漂移）：
  * - 只允许 HTTPS；直连地址必须是本仓库 release 资产路径；
  * - 手动跟随重定向，**每一跳**都做 host 白名单校验；
  * - 直连 CDN 不可用时按配置的下载镜像前缀回退；完整性由 SHA-256 + 安装前校验共同保证；
@@ -427,7 +429,7 @@ class HttpUpdateDownloader(
                 }
             } else {
                 // 镜像可能重定向到 GitHub CDN；重定向目标允许镜像域 + GitHub CDN 白名单（5f598bb）。
-                if (host == null || (host !in mirrorHosts && host !in ALLOWED_REDIRECT_HOSTS)) {
+                if (host == null || (host !in mirrorHosts && host !in GITHUB_HOSTS)) {
                     throw UpdateException(
                         UpdateFailure.IncompleteRelease,
                         "镜像重定向域名不在白名单：${url.host}",
@@ -436,7 +438,7 @@ class HttpUpdateDownloader(
             }
             return
         }
-        if (host == null || !ALLOWED_REDIRECT_HOSTS.contains(host)) {
+        if (host == null || host !in GITHUB_HOSTS) {
             throw UpdateException(UpdateFailure.IncompleteRelease, "下载域名不在白名单：${url.host}")
         }
         if (initial && !url.path.orEmpty().startsWith(releasePath)) {
@@ -451,12 +453,6 @@ class HttpUpdateDownloader(
         const val MIRROR_READ_TIMEOUT_MS = 30_000
         const val MIN_SPARE_BYTES = 50L * 1024 * 1024
         const val DEFAULT_APK_BYTES = 80L * 1024 * 1024
-
-        internal val ALLOWED_REDIRECT_HOSTS: Set<String> = setOf(
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        )
 
         /** 解析 `Content-Range: bytes START-END/TOTAL` 的 START（测试可见）。 */
         internal fun contentRangeStart(header: String?): Long? =

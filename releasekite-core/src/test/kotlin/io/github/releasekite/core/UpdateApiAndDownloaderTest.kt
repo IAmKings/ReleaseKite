@@ -479,6 +479,76 @@ class UpdateApiAndDownloaderTest {
         assertTrue(HttpUpdateDownloader.contentRangeStart("garbage") == null)
     }
 
+    // ── 安全链负向用例（2026-10-30 深审） ──────────────────────
+    // 下载 URL 必须同时满足：https + GITHUB_HOSTS 白名单 + 本仓库 release 资产路径；
+    // 任一不满足都必须在 validateAllowedUrl 阶段抛 IncompleteRelease，且不得发起连接。
+
+    /** 只要校验阶段被绕过就会立刻失败的连接工厂（断言“拒绝发生在建连之前”）。 */
+    private fun securityRejectDownloader() = HttpUpdateDownloader(
+        config = config,
+        openConnection = { url -> throw AssertionError("安全链校验通过前不得发起连接：$url") },
+        freeBytes = { Long.MAX_VALUE },
+    )
+
+    private fun securityInfo(apkUrl: String) = UpdateInfo(
+        versionName = "0.1.7",
+        tagName = "v0.1.7",
+        title = "ZhiBox v0.1.7",
+        notes = "",
+        publishedAt = null,
+        htmlUrl = "https://github.com/IAmKings/ZhiBox/releases",
+        apkUrl = apkUrl,
+        apkSizeBytes = payload.size.toLong(),
+        sha256 = "a".repeat(64),
+        sha256Url = null,
+    )
+
+    private suspend fun assertRejectedBeforeConnecting(apkUrl: String, dir: File) {
+        val error = runCatching {
+            securityRejectDownloader().download(securityInfo(apkUrl), dir, "releasekite")
+        }.exceptionOrNull() as UpdateException
+        assertEquals(UpdateFailure.IncompleteRelease, error.failure)
+    }
+
+    @Test
+    fun downloader_rejectsNonHttpsApkUrl() = runBlocking {
+        val dir = createTempDir("update-dl-http")
+        try {
+            assertRejectedBeforeConnecting(
+                "http://github.com/IAmKings/ZhiBox/releases/download/v0.1.7/x-release-signed.apk",
+                dir,
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun downloader_rejectsNonWhitelistedHost() = runBlocking {
+        val dir = createTempDir("update-dl-bad-host")
+        try {
+            assertRejectedBeforeConnecting(
+                "https://evil.example.com/IAmKings/ZhiBox/releases/download/v0.1.7/x-release-signed.apk",
+                dir,
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun downloader_rejectsForeignRepositoryReleasePath() = runBlocking {
+        val dir = createTempDir("update-dl-bad-path")
+        try {
+            assertRejectedBeforeConnecting(
+                "https://github.com/OtherOwner/OtherRepo/releases/download/v0.1.7/x-release-signed.apk",
+                dir,
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     private fun createTempDir(prefix: String): File =
         java.nio.file.Files.createTempDirectory(prefix).toFile()
 }

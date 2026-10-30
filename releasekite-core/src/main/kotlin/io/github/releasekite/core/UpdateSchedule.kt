@@ -38,6 +38,8 @@ data class DownloadWorkState(
     val totalBytes: Long = -1L,
     val apkPath: String? = null,
     val failure: UpdateFailure? = null,
+    /** 与任务 ID 绑定的持久化下载目标，独立于最新版本检查缓存。 */
+    val info: UpdateInfo? = null,
 ) {
     enum class Status { IDLE, WAITING, RUNNING, SUCCEEDED, FAILED, CANCELLED }
 }

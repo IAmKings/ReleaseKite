@@ -9,22 +9,22 @@
 
 | 源测试类（ZhiBox） | 用例数 | ReleaseKite 测试类 | 迁移 | 新增 |
 |---|---|---|---|---|
-| `AppUpdateManagerTest` | 33 | `:releasekite-core` `AppUpdateManagerTest` | 33 | +1 |
-| `UpdateApiAndDownloaderTest` | 14 | `:releasekite-core` `UpdateApiAndDownloaderTest` | 14 | 0 |
+| `AppUpdateManagerTest` | 33 | `:releasekite-core` `AppUpdateManagerTest` | 33 | +8 |
+| `UpdateApiAndDownloaderTest` | 14 | `:releasekite-core` `UpdateApiAndDownloaderTest` | 14 | +3 |
 | `UpdateModelsTest` | 23 | `:releasekite-core` `UpdateModelsTest` | 23 | 0 |
 | `UpdateRolloutTest` | 6 | `:releasekite-core` `UpdateRolloutTest` | 6 | 0 |
 | `UpdateRoutesTest` | 6 | `:releasekite-core` `UpdateRoutesTest` | 6 | 0 |
-| `UpdateStorePersistenceTest` | 2 | `:releasekite` `SharedPrefsUpdateStoreTest` | 2 | +1 |
+| `UpdateStorePersistenceTest` | 2 | `:releasekite` `SharedPrefsUpdateStoreTest` | 2 | +4 |
 | `AppUpdateDialogTest` | 10 | `:releasekite-compose` `ReleaseKiteUpdateDialogTest` | 10 | +12 |
-| **合计** | **94** | | **94** | |
+| **合计** | **94** | | **94** | **132** |
 
 > 迁移用例的运行方式分布：**82 个纯 JVM**（`:releasekite-core`：Manager 33 + API/Downloader 14 +
 > Models 23 + Rollout 6 + Routes 6）+ **2 个 Robolectric**（`:releasekite` `SharedPrefsUpdateStoreTest`）
 > + **10 个 Robolectric/Compose**（`:releasekite-compose` `ReleaseKiteUpdateDialogTest`）。
-> 三个模块当前自动化总计 **192 = 94 迁移 + 98 新增**（core 108 / Android 12 / Compose 72）。
-> 其中 Compose 新增 62 例（含 T6 审查补齐的 15 个取消规则回归用例
-> `ReleaseKiteUpdateDialogCancellationTest`：Downloading/Verifying/forced 不可取消，
-> 返回键/点外部真实事件）。
+> 三个模块当前自动化总计 **226 = 94 迁移 + 132 新增**（core 118 / Android 35 / Compose 73）。
+> 新增部分包含 T6 深审补齐的取消规则回归（15）、R1/R2/R3 发布前深审的并发/安全/韧性回归
+> （URL 负向 3、verifyCachedForced 竞态、collector 恢复、FGS 降级、target 绑定/恢复、
+> NeedInstallPermission 点击、前后台引用计数等）。
 
 迁移原则：
 
@@ -132,13 +132,13 @@
 ## 5. 迁移验证方式
 
 ```bash
-# core（纯 JVM）：82 个迁移用例 + 26 个新增 = 108 例
+# core（纯 JVM）：82 个迁移用例 + 36 个新增 = 118 例
 ./gradlew :releasekite-core:test
 
-# Android 适配（Robolectric）：SharedPrefs 迁移 2 + 新增 10 = 12 例
+# Android 适配（Robolectric）：SharedPrefs 迁移 2 + 新增 33 = 35 例
 ./gradlew :releasekite:testDebugUnitTest
 
-# Compose UI（Robolectric）：Dialog 迁移 10 + 新增 62 = 72 例
+# Compose UI（Robolectric）：Dialog 迁移 10 + 新增 63 = 73 例
 ./gradlew :releasekite-compose:testDebugUnitTest
 
 # 真实仓库端到端（可选，会访问 GitHub；示例下载会被签名校验拒绝，属预期）

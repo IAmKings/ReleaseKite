@@ -64,17 +64,27 @@ class AndroidApkValidator(context: Context) : ApkValidator {
     private fun PackageInfo.longVersionCodeCompat(): Long =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) longVersionCode else versionCode.toLong()
 
-    @Suppress("DEPRECATION")
-    private fun PackageInfo.signatureSha256Set(): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            signingInfo?.apkContentsSigners.orEmpty()
-        } else {
-            signatures.orEmpty()
-        }
-        return signatures.mapTo(LinkedHashSet()) { signature ->
-            MessageDigest.getInstance("SHA-256")
-                .digest(signature.toByteArray())
-                .joinToString("") { byte -> "%02x".format(byte) }
-        }
+    private fun PackageInfo.signatureSha256Set(): Set<String> = apkSignatureDigests()
+}
+
+/**
+ * 取包的签名证书 SHA-256 集合（安装前签名比对用）。
+ *
+ * 回归（三方深审 P2）：个别 ROM/解析器在 API 28+ 仍只填旧字段 [PackageInfo.signatures]，
+ * 而 `signingInfo` 为 null；若只看 `signingInfo` 会把有效 APK 误判为 [UpdateFailure.ApkInvalid]。
+ * 因此 API 28+ 优先新 API，`signingInfo == null` 时回退 deprecated `signatures`
+ * （`GET_SIGNING_CERTIFICATES or GET_SIGNATURES` 已同时请求两者）。
+ */
+@Suppress("DEPRECATION")
+internal fun PackageInfo.apkSignatureDigests(): Set<String> {
+    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        signingInfo?.apkContentsSigners ?: signatures.orEmpty()
+    } else {
+        signatures.orEmpty()
+    }
+    return signatures.mapTo(LinkedHashSet()) { signature ->
+        MessageDigest.getInstance("SHA-256")
+            .digest(signature.toByteArray())
+            .joinToString("") { byte -> "%02x".format(byte) }
     }
 }

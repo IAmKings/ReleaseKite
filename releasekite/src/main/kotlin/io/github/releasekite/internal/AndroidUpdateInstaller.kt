@@ -1,5 +1,6 @@
 package io.github.releasekite.internal
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -48,7 +49,16 @@ class AndroidUpdateInstaller(context: Context) : UpdateInstaller {
         }
     }
 
+    /**
+     * 打开「安装未知应用」授权设置页。
+     *
+     * [Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES] 从 API 26 起才有：低版本没有该设置页
+     * （`canInstallPackages()` 在 API < 26 恒 true），直接 no-op，避免启动不存在的 Activity
+     * 或触发 InlinedApi 误用（三方深审 P2）。
+     */
+    @SuppressLint("InlinedApi")
     override fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
             data = Uri.parse("package:${appContext.packageName}")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

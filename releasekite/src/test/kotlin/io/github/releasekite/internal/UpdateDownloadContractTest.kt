@@ -122,4 +122,19 @@ class UpdateDownloadContractTest {
         assertEquals("releasekite-update", UpdateDownloadContract.TAG)
         assertTrue(UpdateDownloadContract.UNIQUE_WORK.startsWith("releasekite-"))
     }
+    @Test
+    fun allFailuresUseStableWireCodes() {
+        val failures = listOf(
+            UpdateFailure.Network, UpdateFailure.Timeout, UpdateFailure.Parse,
+            UpdateFailure.NoRelease, UpdateFailure.IncompleteRelease, UpdateFailure.NoChecksum,
+            UpdateFailure.ChecksumMismatch, UpdateFailure.ApkInvalid, UpdateFailure.InsufficientSpace,
+            UpdateFailure.InstallPermission, UpdateFailure.InstallFailed, UpdateFailure.FileUnavailable,
+            UpdateFailure.Cancelled, UpdateFailure.ReleaseUnavailable, UpdateFailure.Http(429, true),
+        )
+        failures.forEach { failure ->
+            assertEquals(failure, UpdateDownloadContract.decodeUpdateFailure(
+                UpdateDownloadContract.encodeUpdateFailure(failure)))
+        }
+        assertEquals("ReleaseUnavailable", UpdateDownloadContract.encodeUpdateFailure(UpdateFailure.ReleaseUnavailable))
+    }
 }

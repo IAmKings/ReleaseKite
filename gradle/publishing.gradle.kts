@@ -3,7 +3,7 @@
 // - Java 模块发布 JAR + sources；Android 模块发布 AAR + sources
 //   （Android 侧在各自 build.gradle.kts 的 android.publishing.singleVariant 中声明）；
 // - publishToMavenLocal 供 JitPack（根 install 任务聚合）与宿主本地验证；
-// - 额外写入 root build/maven-repo，便于不依赖 ~/.m2 的制品检查。
+// - publish 任务额外写入 root build/maven-repo（不是 publishToMavenLocal 的路径）。
 apply(plugin = "maven-publish")
 
 val libGroup = providers.gradleProperty("GROUP").get()
@@ -16,6 +16,17 @@ val moduleDescription = when (project.name) {
     "releasekite-compose" -> "ReleaseKite Compose UI: update dialog, settings row and settings section."
     else -> "ReleaseKite module ${project.name}."
 }
+
+// POM 的 URL/SCM 元数据：默认从 CI 的 GITHUB_REPOSITORY 推导；本地/未配置仓库时为占位 URL。
+// 发布前请用 -PPOM_URL=https://github.com/<owner>/ReleaseKite 或环境变量覆盖。
+val pomUrl: String = providers.gradleProperty("POM_URL").orNull
+    ?: providers.environmentVariable("GITHUB_REPOSITORY").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "https://github.com/$it" }
+    ?: "https://github.com/OWNER/ReleaseKite"
+val repoPath = pomUrl.substringAfter("github.com/", "").trim('/').removeSuffix(".git")
+val scmUrl = "https://github.com/$repoPath.git"
+val scmSsh = "scm:git:ssh://git@github.com/$repoPath.git"
 
 afterEvaluate {
     extensions.configure<PublishingExtension> {
@@ -32,7 +43,7 @@ afterEvaluate {
                 pom {
                     name.set(project.name)
                     description.set(moduleDescription)
-                    url.set("https://github.com/releasekite/ReleaseKite")
+                    url.set(pomUrl)
                     licenses {
                         license {
                             name.set("MIT License")
@@ -46,9 +57,9 @@ afterEvaluate {
                         }
                     }
                     scm {
-                        connection.set("scm:git:git://github.com/releasekite/ReleaseKite.git")
-                        developerConnection.set("scm:git:ssh://github.com/releasekite/ReleaseKite.git")
-                        url.set("https://github.com/releasekite/ReleaseKite")
+                        connection.set(scmUrl)
+                        developerConnection.set(scmSsh)
+                        url.set(pomUrl)
                     }
                 }
             }

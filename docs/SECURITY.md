@@ -74,8 +74,10 @@
 - 网络请求只有：GitHub API 查询、Release 资产下载（含镜像）；对 GitHub 暴露的信息与普通浏览器
   访问相同（IP、User-Agent）；
 - `installId` 是本地随机 UUID，仅用于灰度分桶，永不离开设备；
-- 更新状态存于 `SharedPreferences("releasekite_update")` 与 `cacheDir`；示例应用
-  `allowBackup=false`，宿主如需备份请排除该文件（见 [`INTEGRATION.md`](INTEGRATION.md) §6.3）；
+- 更新状态存于两个 SharedPreferences：`releasekite_update`（节流/缓存/线路健康/待安装记录）与
+  `releasekite_download_target`（本次下载的 `UpdateInfo` + `workId` 绑定，用于跨进程恢复下载身份）；
+  后者只含公开的 Release 元数据（版本、说明、URL、SHA），不含用户数据。示例应用
+  `allowBackup=false`；宿主如需备份请排除这两个文件（见 [`INTEGRATION.md`](INTEGRATION.md) §6.3）；
 - 通知只包含版本号与「更新已下载」，不含敏感内容。
 
 ## 4. GitHub 匿名 API 限流

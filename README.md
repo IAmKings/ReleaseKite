@@ -22,7 +22,7 @@ SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Bet
 | Beta 通道 | GitHub prerelease（tag 含 `-`）+ semver 预发布排序；stable 永远看不到 Beta |
 | 灰度/强制 | Release 资产 `-update.json`（schema 1）：`rolloutPercent` 本地确定性分桶、`minSupportedVersion` 强制更新 |
 | 弱网可用 | 直连 GitHub CDN 失败时按镜像前缀回退；线路健康/冷却/自动换路 |
-| 可测试 | 94 个从 ZhiBox 迁移的用例（82 个纯 JVM + 12 个 Robolectric），全部协作者可注入 |
+| 可测试 | 94 个从 ZhiBox 迁移的用例 + 132 个新增，共 **226** 个自动化用例（core 118 / Android 35 / Compose 73），全部协作者可注入 |
 
 ## 与 ZhiBox 的关系
 
@@ -48,6 +48,13 @@ dependencies {
     // JitPack 多模块坐标：com.github.<owner>.<Repo>:<module>:<tag>
     // Compose UI 模块（api 传递依赖会带入 releasekite 与 releasekite-core）
     implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+
+    // 宿主自己的 Compose 栈（库的公开 API 用 api 暴露了 compose-ui/ui-graphics；
+    // 宿主页面自身仍需 BOM/material3/activity-compose，版本按你的工程选择）
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.13.0")
 }
 ```
 
@@ -170,6 +177,17 @@ implementation("io.github.releasekite:releasekite-compose:0.1.0")
 GitHub Packages 需要在 fork 中为 `gradle/publishing.gradle.kts` 追加仓库与凭据配置
 （本仓库未内置）。
 
+> **发布前验证 JitPack**：本仓库默认发布 group 是 `io.github.releasekite`，而 JitPack 的
+> 多模块消费坐标是 `com.github.<owner>.<Repo>:<module>:<tag>`。JitPack 对多模块 Gradle
+> metadata 的 group 重写有已知限制，发布到 JitPack 前应：
+> 1) 用真实 GitHub 仓库推一个 tag；
+> 2) 以 `./gradlew publishToMavenLocal -PGROUP=com.github.<owner>.ReleaseKite` 验证 JitPack
+>    构建入口；
+> 3) 至少用一个只依赖发布坐标的独立 consumer 工程跑 `assembleRelease`（本地可用
+>    `scripts/consumer-smoke.sh` 验证 mavenLocal 路径，JitPack 实网路径需在推送后复核）。
+> 若 JitPack 解析失败，改用 GitHub Packages 或 Maven Central 发布（`-PPOM_URL=...` 设置
+> POM url/scm 元数据）。
+
 ## 构建与测试
 
 本地需要 JDK 21（macOS 可用 Android Studio JBR）：
@@ -180,19 +198,25 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 # 三个模块的单元测试（core 纯 JVM；android/compose 用 Robolectric）
 ./gradlew :releasekite-core:test :releasekite:testDebugUnitTest :releasekite-compose:testDebugUnitTest
 
-# 示例应用构建
+# Debug 示例 + Release 门禁（AAR + sample R8/minify）+ lint
 ./gradlew :sample:assembleDebug
+./gradlew :releasekite:assembleRelease :releasekite-compose:assembleRelease :sample:assembleRelease
+./gradlew :releasekite:lintDebug :releasekite-compose:lintDebug :sample:lintDebug
+./gradlew :releasekite:lintRelease :releasekite-compose:lintRelease :sample:lintRelease
 
-# 发布到本地 Maven（验证坐标）
+# 发布到本地 Maven（验证坐标）；再跑独立 consumer + R8 冒烟
 ./gradlew publishToMavenLocal
+scripts/consumer-smoke.sh
 ```
 
 CI 门禁见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：JDK 21 + wrapper 校验 +
-三模块单测 + `:sample:assembleDebug` + lint，失败上传报告。测试矩阵与真机验收清单见
-[`docs/TESTING.md`](docs/TESTING.md)。
+三模块单测 + Debug sample + Debug/Release lint + Release AAR/sample（R8）+ `publishToMavenLocal`，
+失败上传报告。测试矩阵与真机验收清单见 [`docs/TESTING.md`](docs/TESTING.md)。
 
 示例应用（`sample`）默认仓库为 `IAmKings/ZhiBox`：可以走通真实的检查/下载链路，但下载到的
 ZhiBox APK 会在包名/签名校验处被拒绝——这是**预期的安全拦截**（只允许升级应用自身）。
+示例通过 `metadataAssetSuffix = null` 关闭灰度/强制元数据，避免 `versionName=0.0.1` 命中
+真实仓库的 `minSupportedVersion` 而首启被强制弹窗锁死；真实接入请保留默认值。
 
 ## FAQ
 
@@ -220,6 +244,11 @@ maven("https://jitpack.io")
 
 // 2) Dependencies (JitPack multi-module coordinate; replace <owner>/<version>)
 implementation("com.github.<owner>.ReleaseKite:releasekite-compose:<version>")
+// Host app's own Compose stack (library exposes compose-ui/ui-graphics via api)
+implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+implementation("androidx.compose.ui:ui")
+implementation("androidx.compose.material3:material3")
+implementation("androidx.activity:activity-compose:1.13.0")
 
 // 3) Application.onCreated
 ReleaseKite.initialize(

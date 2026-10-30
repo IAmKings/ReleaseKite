@@ -20,8 +20,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import io.github.releasekite.compose.ReleaseKiteSettingsSection
 import io.github.releasekite.compose.ReleaseKiteUpdateDialog
 import io.github.releasekite.compose.ReleaseKiteUpdateRow
 import io.github.releasekite.core.UpdateUiState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.releasekite.sample.ui.theme.ReleaseKiteSampleTheme
 
 /**
@@ -85,8 +87,15 @@ class MainActivity : ComponentActivity() {
 private fun SampleScreen() {
     // Application 中已初始化；这里直接取单例。
     val manager = ReleaseKite.manager
-    val state by manager.state.collectAsState()
+    // 生命周期感知收集：STOPPED 时停止收集，避免后台无意义重组（与库内 Host 一致）。
+    val state by manager.state.collectAsStateWithLifecycle()
     var fakePhase by remember { mutableStateOf<FakeUpdatePhase?>(null) }
+    LaunchedEffect(fakePhase) {
+        if (fakePhase == FakeUpdatePhase.DOWNLOADING || fakePhase == FakeUpdatePhase.VERIFYING) {
+            delay(3_000L)
+            fakePhase = null
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(
@@ -246,6 +255,14 @@ private fun ExpectedRejectionCard() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
+            Text(
+                text = "另一处示例差异：demo 关闭了 -update.json 元数据" +
+                    "（metadataAssetSuffix = null）。示例版本 0.0.1 低于 ZhiBox 仓库的 " +
+                    "minSupportedVersion（0.1.0），若开启元数据会在首启进入不可取消的强制更新，" +
+                    "演示将被锁死；关闭后按 100%/非强制处理。真实接入请保留默认元数据。" ,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }
@@ -261,7 +278,7 @@ private fun ConfigCard() {
             if (config.downloadMirrors.isEmpty()) "空（仅直连 github.com）" else config.downloadMirrors.joinToString(),
         )
         InfoRow("checksumAssetSuffix", config.checksumAssetSuffix)
-        InfoRow("metadataAssetSuffix", config.metadataAssetSuffix ?: "关闭")
+        InfoRow("metadataAssetSuffix", config.metadataAssetSuffix ?: "关闭（demo 防强制锁死）")
         InfoRow("requireChecksum", config.requireChecksum.toString())
         InfoRow("betaChannelEnabled", config.betaChannelEnabled.toString())
         InfoRow("userAgent", "库默认（releasekite 初始化时按库版本与包名生成）")

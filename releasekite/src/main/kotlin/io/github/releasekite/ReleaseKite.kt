@@ -50,12 +50,17 @@ object ReleaseKite {
 
     fun isInitialized(): Boolean = instance != null
 
-    /** 宿主回到前台：Worker 据此选择「直接拉起安装器」而不是发完成通知。 */
+    /**
+     * 宿主回到前台（引用计数 +1）：Worker 据此选择「直接拉起安装器」而不是发完成通知。
+     *
+     * 每个 Activity/窗口在 onStart 调用一次即可；多 Activity 重叠时计数保证不会因
+     * 某个 Activity 先 onStop 而误判为后台（见 [ReleaseKiteForegroundTracker]）。
+     */
     fun onForeground() {
         ReleaseKiteForegroundTracker.onForeground()
     }
 
-    /** 宿主退到后台：后台下载完成后改发点击安装通知。 */
+    /** 宿主退到后台（引用计数 -1，clamp >= 0）：后台下载完成后改发点击安装通知。 */
     fun onBackground() {
         ReleaseKiteForegroundTracker.onBackground()
     }

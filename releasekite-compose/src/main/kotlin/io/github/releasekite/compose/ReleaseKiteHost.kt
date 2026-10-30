@@ -3,7 +3,7 @@ package io.github.releasekite.compose
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -32,29 +33,35 @@ import io.github.releasekite.core.UpdateManager
  * - **前后台**：`ON_START`/`ON_STOP` 调 [ReleaseKite.onForeground]/[ReleaseKite.onBackground]，
  *   供 core 的 `isAppForeground` 判断（前台下载完成自动拉起安装器、后台发通知）；
  * - **通知权限**：Android 13+ 点「立即更新」时请求 `POST_NOTIFICATIONS`，**授权与否都继续下载**
- *   （拒绝只是收不到通知，不影响安装链）；宿主不是 ComponentActivity 或在 Preview 中时
- *   没有 ActivityResultRegistry，降级为直接开始下载。
+ *   （拒绝只是收不到通知，不影响安装链）。是否可请求以 `LocalActivityResultRegistryOwner`
+ *   是否存在为准（ComponentActivity/ContextThemeWrapper 等提供 registry 的宿主都能请求）；
+ *   Preview 或没有 registry 的宿主降级为直接开始下载。
  *
  * 宿主用 `requestNotificationPermission = false` 可关闭权限请求（例如宿主自己统一管理权限）。
  */
 @Composable
 fun ReleaseKiteHost(
-    manager: UpdateManager = ReleaseKite.manager,
+    // Compose lint（ModifierParameter）要求 Modifier 是第一个可选参数；manager 带默认值（契约）
+    // 只能排在 modifier 之后。全部命名参数调用保持兼容（如 `ReleaseKiteHost(manager = m)`）。
     modifier: Modifier = Modifier,
+    manager: UpdateManager = ReleaseKite.manager,
     requestNotificationPermission: Boolean = true,
     style: ReleaseKiteDialogStyle = ReleaseKiteDialogStyle(),
 ) {
     val state by manager.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val inPreview = LocalInspectionMode.current
+    val activityResultRegistryOwner = LocalActivityResultRegistryOwner.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // 「立即更新」入口：需要时先请求通知权限，回调里无论授权与否都 startDownload。
+    // 能否请求以是否存在 ActivityResultRegistry 为准（ComponentActivity、ContextThemeWrapper
+    // 等宿主都可）；Preview/无 registry 时降级为直接下载。
     val requestDownload: () -> Unit = if (
         requestNotificationPermission &&
         !inPreview &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-        context is ComponentActivity
+        activityResultRegistryOwner != null
     ) {
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
@@ -63,8 +70,10 @@ fun ReleaseKiteHost(
             manager.startDownload()
         }
         val requestDownloadWithPermission: () -> Unit = {
-            val granted = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
             if (granted) {
                 manager.startDownload()
             } else {
@@ -73,7 +82,7 @@ fun ReleaseKiteHost(
         }
         requestDownloadWithPermission
     } else {
-        // 非 ComponentActivity / Preview / 宿主关闭请求：直接开始下载。
+        // 无 ActivityResultRegistry / Preview / 宿主关闭请求：直接开始下载。
         { manager.startDownload() }
     }
 

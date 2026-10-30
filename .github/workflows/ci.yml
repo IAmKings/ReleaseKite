@@ -1,11 +1,15 @@
 name: CI
 
 # ReleaseKite 质量门禁：
-#   1. 纯 JVM 领域层单测        :releasekite-core:test
-#   2. Android 适配层单测       :releasekite:testDebugUnitTest（Robolectric）
-#   3. Compose UI 单测          :releasekite-compose:testDebugUnitTest（Robolectric）
-#   4. 示例应用可构建           :sample:assembleDebug
-#   5. lint（error 级阻断）     :releasekite / :releasekite-compose / :sample 的 lintDebug
+#   1. 纯 JVM 领域层单测            :releasekite-core:test（200 例的一部分）
+#   2. Android 适配层单测           :releasekite:testDebugUnitTest（Robolectric）
+#   3. Compose UI 单测              :releasekite-compose:testDebugUnitTest（Robolectric）
+#   4. Debug 示例可构建             :sample:assembleDebug
+#   5. Debug lint（error 级阻断）   :releasekite / :releasekite-compose / :sample 的 lintDebug
+#   6. Release 门禁                 :releasekite/:releasekite-compose 的 assembleRelease（AAR）
+#                                   + :sample:assembleRelease（R8/minify + resource shrink）
+#   7. Release lint（error 级阻断） :releasekite / :releasekite-compose / :sample 的 lintRelease
+#   8. 发布产物可生成               :releasekite-core/:releasekite/:releasekite-compose 的 publishToMavenLocal
 #   任何一步失败都会上传测试/失败报告 artifact 便于排障。
 
 on:
@@ -24,9 +28,9 @@ concurrency:
 
 jobs:
   build-test-lint:
-    name: unit tests + lint + sample build
+    name: tests + debug/release build + lint + publish
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -37,6 +41,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+
+      # 确保 Android SDK/cmdline-tools 可用（compileSdk 36）；runner 已预装 SDK 时此步骤做版本确认。
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verify toolchain
+        run: |
+          set -euo pipefail
+          java -version
+          echo "JAVA_HOME=${JAVA_HOME:-}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+          ls "$ANDROID_HOME/build-tools" | tail -3
 
       # 供应链校验：确认 gradle-wrapper.jar 与官方发布一致
       - name: Validate Gradle wrapper
@@ -52,15 +69,43 @@ jobs:
             :releasekite:testDebugUnitTest \
             :releasekite-compose:testDebugUnitTest
 
-      - name: Sample app build
+      - name: Debug sample build
         run: ./gradlew --no-daemon --stacktrace :sample:assembleDebug
 
-      - name: Lint
+      - name: Debug lint
         run: |
           ./gradlew --no-daemon --stacktrace \
             :releasekite:lintDebug \
             :releasekite-compose:lintDebug \
             :sample:lintDebug
+
+      # Release AAR（库模块）与 R8 sample（示例自带 minify/shrink 门禁）都必须可构建。
+      - name: Release builds (AAR + R8 sample)
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :releasekite:assembleRelease \
+            :releasekite-compose:assembleRelease \
+            :sample:assembleRelease
+
+      - name: Release lint
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :releasekite:lintRelease \
+            :releasekite-compose:lintRelease \
+            :sample:lintRelease
+
+      # 坐标/产物完整性：三个库模块可发布到 Maven Local（JitPack 走根 install 聚合任务）。
+      - name: Publish to Maven Local
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :releasekite-core:publishToMavenLocal \
+            :releasekite:publishToMavenLocal \
+            :releasekite-compose:publishToMavenLocal
+
+      # 发布物消费端冒烟：独立最小 Compose App 仅通过 mavenLocal 坐标依赖，R8 minify+shrink
+      # 构建 release；验证 POM/Gradle metadata、Compose api scope 与 consumer ProGuard 规则。
+      - name: Consumer smoke (mavenLocal AAR + R8)
+        run: bash scripts/consumer-smoke.sh
 
       - name: Upload failure reports
         if: failure()
@@ -71,5 +116,7 @@ jobs:
             **/build/reports/**
             **/build/test-results/**
             **/build/outputs/lint-results/**
+            **/build/outputs/mapping/**
+            **/build/outputs/apk/**
           if-no-files-found: warn
           retention-days: 7

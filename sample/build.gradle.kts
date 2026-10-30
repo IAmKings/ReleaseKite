@@ -25,8 +25,15 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            // 示例工程本地验证用 debug 签名；不用于发布。
+            // 示例工程的 release 变体也作为「R8/minify + resource shrink」门禁：
+            // 用于验证库的 consumer rules、Compose 运行时与 WorkManager Worker 在混淆下可构建。
+            // 注意：签名仍用本地 debug keystore，仅用于构建验证/本机安装，不可发布。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -53,6 +60,8 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // 示例页面用 collectAsStateWithLifecycle 收集 manager.state（生命周期感知）。
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

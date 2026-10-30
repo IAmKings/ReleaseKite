@@ -331,6 +331,7 @@ data class DownloadWorkState(
     val totalBytes: Long = -1L,
     val apkPath: String? = null,
     val failure: UpdateFailure? = null,
+    val info: UpdateInfo? = null,   // 与 workId 绑定的持久化下载目标；旧调度实现可不提供
 ) {
     enum class Status { IDLE, WAITING, RUNNING, SUCCEEDED, FAILED, CANCELLED }
 }
@@ -340,6 +341,17 @@ interface UpdateDownloadScheduler {
     fun observe(): Flow<DownloadWorkState>
     fun cancel(workId: String? = null)
 }
+```
+`DownloadWorkState.info` 语义（本轮修复新增/明确）：
+- 它是**与 `workId` 绑定的持久化下载目标**（完整 `UpdateInfo`），不是「最新检查缓存」；
+  `workId != null` 时应提供 `info`，Manager 用它恢复下载/失败/强制标记，避免检查结果刷新后
+  把旧任务误当成新版本；
+- **旧调度实现兼容边界**：历史/第三方调度器可能不填 `info`。此时 Manager 仅以
+  `currentActionInfo()`（当前 UI 正在展示的更新）或缓存做兜底；Manifest 中的
+  `:releasekite` 实现会取消「缺少绑定目标」的旧任务并保留 `.part` 半包供用户重新发起下载，
+  不会把新一轮检查缓存当作旧任务身份；
+- 目标持久化在独立 prefs（`:releasekite` 为 `releasekite_download_target`），必须在
+  WorkRequest 提交前写入（参见 §2）。
 
 sealed interface InstallResult {
     data object Launched : InstallResult
@@ -412,12 +424,34 @@ class UpdateManager(
 - 删除 `companion get(Context)` 与 `debugInjectMockState`；
 - 删除 `UpdateConfig.ensureChannel` 调用，改为 `notifier.prepare()`。
 
+手动检查的并发/状态约束（发布前深审加固）：
+- `checkNow()` 在 `Downloading` / `Verifying` / `NeedInstallPermission` 期间被忽略，
+  避免打断不可取消的下载或丢失待安装权限流程；`ReleaseKiteUpdateRow` 对这些 phase 同步置灰。
+  其它 phase 的手动检查仍取消在途检查并递增代际。
+- 下载状态流 `scheduler.observe()` 由 Manager 以「异常重连」方式订阅：底层 Flow 抛异常时
+  记录日志并 1s 后重新订阅，不会让唯一的下载状态管道永久静默。
+- `verifyCachedForced` 的 `NoRelease` 分支只在 phase 仍为 `Available` 时清缓存/关闭弹窗；
+  下载/校验/待安装期间不得覆盖既有 phase。
+
 Beta 偏好归一化与禁用守卫（配置是最终事实来源，见 MIGRATION_ZHIBOX §3）：
 - 构造 `UpdateManager` 时（init）：若 `config.betaChannelEnabled == false` 且
   `store.channel == BETA`，把持久化通道归一化为 `STABLE`，再发布初始 `UpdateUiState`；
 - `setChannel(BETA)`：`config.betaChannelEnabled == false` 时直接忽略（不修改 store/state）；
   通道真正变化时才清缓存、重置节流/失败退避与 `dismissedVersion`，并递增检查代际取消在途检查；
 - `UpdateUiState.betaChannelEnabled` 始终来自 `config.betaChannelEnabled`，UI 据此隐藏 Beta 开关。
+- 禁用 Beta 时，归一化在 `init` 内、**任何协程启动之前**完成，并同时清缓存/重置节流与
+  `dismissedVersion`，避免冷启动协程先读到旧 Beta 缓存（本轮修复）。
+
+本轮其它行为收紧（与 ZhiBox v0.1.17 及后续审查修复对齐）：
+- **NoRelease 撤回强制缓存**：检查返回 404/无 Release（`UpdateFailure.NoRelease`）时清缓存并退出
+  强制态；「新鲜强制缓存后台复查」与「强制缓存过期后联网检查」两条路径都不得回退到旧缓存继续强制；
+- **强制缓存后台复查**：展示强制缓存后若自动检查开启，按 `autoRetryIntervalMs` 节流做一次静默
+  复查；服务端仍有/更强制 → 更新缓存；`NoRelease` → 清缓存并回到 Idle；网络失败保留缓存强制
+  （离线降级）；
+- **恢复下载的强制标记**：进程重启后从 `DownloadWorkState.info`（绑定目标）重算
+  `activeForced`，下载失败时保持强制属性（除非失败次数达到逃生阈值），不得降级为可取消；
+- **冷启动竞态**：冷启动检查不得覆盖已经恢复的 WAITING/RUNNING/SUCCEEDED 下载身份
+  （检查结果只更新缓存，不替换下载态）。
 
 ## 2. `releasekite`（Android，包 `io.github.releasekite` / `io.github.releasekite.internal`）
 
@@ -436,12 +470,19 @@ object ReleaseKite {
 内部契约：
 - 工作目录：`File(context.cacheDir, "releasekite/updates")`。
 - prefs：`releasekite_update`（key 与 ZhiBox `SharedPrefsUpdateStore` 一致；`CACHE_META_SCHEMA=2`）。
+- 下载目标 prefs：`releasekite_download_target`（独立文件；按 `workId` 保存本次下载的完整
+  `UpdateInfo`，在 WorkRequest 提交前用 `commit()` 写入，供跨进程恢复使用）。
 - 通知：channel `releasekite_update`，进度 ID 4201，完成 ID 4202，PendingIntent requestCode 4203；小图标 `R.drawable.releasekite_ic_notification`。
 - FileProvider authority：`"${context.packageName}.releasekite.updates"`。
 - Worker：`io.github.releasekite.internal.ReleaseKiteDownloadWorker`；唯一工作名 `releasekite-update-download`，tag `releasekite-update`；无 Network/Storage 约束。
-- Worker input keys：`version`、`apk_url`、`apk_size`、`sha256`、`sha256_url`、`html_url`、`repository`、`file_prefix`、`user_agent`、`mirrors`（`\n` 分隔）、`require_checksum`、`timeout_ms`；output：`apk_path`、`failure`（编码规则同 ZhiBox：`Http:code:rateLimited`，其余类名）。不保留 `installed_already`：目标版本已安装时 Worker 返回 `Result.success()` 且无 `apk_path`，Manager 按 SUCCEEDED + 无 apkPath 清理。
+- Worker input keys：`version`、`apk_url`、`apk_size`、`sha256`、`sha256_url`、`html_url`、`repository`、`file_prefix`、`user_agent`、`mirrors`（`\n` 分隔）、`require_checksum`、`timeout_ms`；output：`apk_path`、`failure`（**固定字符串编码**，见下）。不保留 `installed_already`：目标版本已安装时 Worker 返回 `Result.success()` 且无 `apk_path`，Manager 按 SUCCEEDED + 无 apkPath 清理。
 - 进度通知（前台服务/通知栏）是 Android 实现细节：`AndroidUpdateNotifier` 可提供 `progressNotification()/notifyProgress()/cancelProgress()` 等 public 方法供 Worker 使用，**不要求** core 的 `UpdateNotifier` 接口包含它们。
-- `UpdateDownloadContract.encodeUpdateFailure/decodeUpdateFailure` 语义与源一致。
+- `UpdateDownloadContract.encodeUpdateFailure/decodeUpdateFailure` 使用**固定字符串**（不受 R8/
+  混淆影响）：Http 为 `Http:<code>:<rateLimited>`，其余为与失败名一致的稳定字符串
+  （`Network`、`Timeout`、`Parse`、`NoRelease`、`IncompleteRelease`、`NoChecksum`、
+  `ChecksumMismatch`、`ApkInvalid`、`InsufficientSpace`、`InstallPermission`、
+  `InstallFailed`、`FileUnavailable`、`Cancelled`、`ReleaseUnavailable`）；未知值解码为
+  `Network`。**不要**使用 `failure::class.simpleName` 之类依赖运行时类名的编码。
 
 ## 3. `releasekite-compose`（包 `io.github.releasekite.compose`）
 
@@ -459,8 +500,8 @@ data class ReleaseKiteDialogStyle(
 )
 
 @Composable fun ReleaseKiteHost(
-    manager: UpdateManager = ReleaseKite.manager,
     modifier: Modifier = Modifier,
+    manager: UpdateManager = ReleaseKite.manager,
     requestNotificationPermission: Boolean = true,
     style: ReleaseKiteDialogStyle = ReleaseKiteDialogStyle(),
 )
@@ -486,7 +527,12 @@ data class ReleaseKiteDialogStyle(
 ```
 - 可见 phase 与取消规则、按钮、进度、失败文案、设置行状态与 ZhiBox `AppUpdateDialog.kt` 完全一致。
 - `ReleaseKiteHost` 负责 `onAppEntered`（每进程一次）、`onAppResumed`、前后台、通知权限请求；UI 只用 `stringResource`，资源前缀 `releasekite_`。
-- 默认英文，`values-zh-rCN` 中文；失败原因全覆盖；`testTag`：`releasekite_update_dialog`、`releasekite_update_now`、`releasekite_update_later`、`releasekite_update_retry`、`releasekite_update_settings`、`releasekite_update_row`。
+- 默认英文，`values-zh-rCN` 中文；失败原因全覆盖；`testTag` 字符串：
+  `releasekite_update_dialog`、`releasekite_update_now`、`releasekite_update_later`、
+  `releasekite_update_retry`、`releasekite_update_settings`、`releasekite_update_row`。
+  这些 tag 值属于稳定契约（宿主自动化/截图走查可按字符串匹配）；但常量对象
+  `io.github.releasekite.compose.ReleaseKiteTestTags` 是 **internal**，不是公开 API，
+  宿主不要 import，需要时用字面量或在宿主测试中自建常量。
 
 ## 4. 构建/测试命令
 
@@ -496,7 +542,10 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew :releasekite:testDebugUnitTest
 ./gradlew :releasekite-compose:testDebugUnitTest
 ./gradlew :sample:assembleDebug
-./gradlew publishToMavenLocal
+# 发布门禁（CI 同款）
+./gradlew :releasekite:assembleRelease :releasekite-compose:assembleRelease :sample:assembleRelease
+./gradlew :releasekite:lintRelease :releasekite-compose:lintRelease :sample:lintRelease
+./gradlew :releasekite-core:publishToMavenLocal :releasekite:publishToMavenLocal :releasekite-compose:publishToMavenLocal
 ```
 
 ## 5. 文件所有权
@@ -508,3 +557,8 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 | platform-eng | `releasekite/**` |
 | compose-eng | `releasekite-compose/**` |
 | release-eng | `sample/**`、`docs/**`（除 API_CONTRACT.md）、`samples/**`、`README.md`、`CHANGELOG.md`、`LICENSE`、`NOTICE`、`jitpack.yml`、`.github/**` |
+
+下载目标单独保存于 `releasekite_download_target`，与 WorkRequest id 原子绑定后再提交任务。
+恢复 WAITING/RUNNING/SUCCEEDED 时优先使用该目标，不使用可能已刷新为其他版本的检查缓存。
+错误输出使用固定字符串编码，不依赖混淆后的运行时类名。
+Android 适配层不接管缺少 workId 绑定目标的旧任务；未完成任务会取消并保留半包，供用户重新发起下载。

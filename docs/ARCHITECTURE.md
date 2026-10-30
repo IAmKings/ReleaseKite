@@ -195,8 +195,9 @@ Verifying ──校验失败──▶ DownloadFailed(info, ApkInvalid/...)
 | UI（Compose） | Main | `collectAsState()` 订阅 `StateFlow`，回调 manager 方法 |
 
 - 状态只通过 `MutableStateFlow` 更新（`Atomic`/单协程写者保证一致）；UI 线程不做 IO。
-- `ReleaseKite.onForeground()/onBackground()`（由 `ReleaseKiteHost` 生命周期驱动）维护
-  `UpdateEnvironment.isAppForeground`，决定下载完成后「自动安装」还是「发通知」。
+- `ReleaseKite.onForeground()/onBackground()`（由 `ReleaseKiteHost` 生命周期驱动，内部引用计数）
+  维护 `UpdateEnvironment.isAppForeground`，决定下载完成后「自动安装」还是「发通知」；
+  计数语义保证多 Activity 重叠时不会因某个 Activity 先 onStop 而误判后台。
 - 阻塞操作都有超时（API connect/read、下载整体超时、20s 下载看门狗），避免主线程/状态卡死。
 
 ## 8. 为什么 core 是纯 JVM
@@ -205,7 +206,9 @@ Verifying ──校验失败──▶ DownloadFailed(info, ApkInvalid/...)
    用例**（core：fake store/installer/source + Mock HTTPS，无 Robolectric/真机，秒级跑完），
    其余 12 个是 Android/UI 专属用例（`:releasekite` 的 SharedPrefs 2 个、`:releasekite-compose`
    的弹窗 10 个，均用 Robolectric）。更新逻辑（版本/策略/灰度/状态机）由纯 JVM 用例守住，
-   这是它能被持续回归的前提。
+   这是它能被持续回归的前提。发布前深度审查后又补充了 132 个用例（并发/安全 URL 负向/
+   verify 竞态/状态管道恢复/FGS 降级/target 绑定与恢复/前后台引用计数/取消规则等），
+   当前总计 **226**（core 118 / Android 35 / Compose 73）。
 2. **边界由编译器强制**：`core` 不引入 Android 依赖，任何误用 `Context`/`PackageManager`
    的代码在编译期就失败，避免平台细节渗透进领域层。
 3. **可移植性**：版本比较、Release JSON 解析、灰度分桶、线路选择、下载协议（含 SHA/重定向/

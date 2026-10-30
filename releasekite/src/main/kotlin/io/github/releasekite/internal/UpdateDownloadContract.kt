@@ -51,10 +51,23 @@ object UpdateDownloadContract {
     private const val DEFAULT_FILE_PREFIX = "releasekite"
     private const val DEFAULT_USER_AGENT = "ReleaseKite"
 
-    /** 失败原因 ↔ WorkManager Data 字符串：data object 用类名，Http 用 `Http:code:rateLimited`。 */
+    /** 失败原因 ↔ WorkManager Data 字符串：固定字符串不受混淆影响，Http 用 `Http:code:rateLimited`。 */
     fun encodeUpdateFailure(failure: UpdateFailure): String = when (failure) {
         is UpdateFailure.Http -> "Http:${failure.code}:${failure.rateLimited}"
-        else -> failure::class.simpleName ?: "Network"
+        UpdateFailure.Network -> "Network"
+        UpdateFailure.Timeout -> "Timeout"
+        UpdateFailure.Parse -> "Parse"
+        UpdateFailure.NoRelease -> "NoRelease"
+        UpdateFailure.IncompleteRelease -> "IncompleteRelease"
+        UpdateFailure.NoChecksum -> "NoChecksum"
+        UpdateFailure.ChecksumMismatch -> "ChecksumMismatch"
+        UpdateFailure.ApkInvalid -> "ApkInvalid"
+        UpdateFailure.InsufficientSpace -> "InsufficientSpace"
+        UpdateFailure.InstallPermission -> "InstallPermission"
+        UpdateFailure.InstallFailed -> "InstallFailed"
+        UpdateFailure.FileUnavailable -> "FileUnavailable"
+        UpdateFailure.Cancelled -> "Cancelled"
+        UpdateFailure.ReleaseUnavailable -> "ReleaseUnavailable"
     }
 
     fun decodeUpdateFailure(value: String?): UpdateFailure {
