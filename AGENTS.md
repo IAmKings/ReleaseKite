@@ -9,5 +9,6 @@
 - 门禁：`docs/TESTING.md`；发布库：见 `skills/releasekite/references/maintainer.md`
 - 不要提交 secrets/keystore；不要静默安装；不要覆盖已发布 tag；修改行为必须同步测试与文档。
 
-仓库内 skills 的 canonical source 是 `skills/releasekite/`；安装到用户 skill 目录用
-`scripts/install-skills.sh`。修改 skill 后运行 `python3 scripts/test-skills.py`。
+仓库内 skills 的 canonical source 是 `skills/releasekite/`。外部宿主优先用标准安装方式：
+`npx skills add IAmKings/ReleaseKite --skill releasekite -g`；没有 Node/离线环境再用
+`scripts/install-skills.sh` fallback。修改 skill 后运行 `python3 scripts/test-skills.py`。

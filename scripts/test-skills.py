@@ -147,8 +147,18 @@ def main() -> int:
         fail(errors, "AGENTS.md 没有指向 skills/releasekite/SKILL.md")
 
     readme = ROOT / "README.md"
-    if readme.is_file() and "skills/README.md" not in readme.read_text(encoding="utf-8"):
-        fail(errors, "README.md 没有链接 skills/README.md")
+    if readme.is_file():
+        readme_text = readme.read_text(encoding="utf-8")
+        if "skills/README.md" not in readme_text:
+            fail(errors, "README.md 没有链接 skills/README.md")
+        if "npx skills add" not in readme_text:
+            fail(errors, "README.md 没有说明 npx skills add 安装方式")
+
+    skills_readme = SKILLS / "README.md"
+    if not skills_readme.is_file():
+        fail(errors, "skills/README.md 不存在")
+    elif "npx skills add" not in skills_readme.read_text(encoding="utf-8"):
+        fail(errors, "skills/README.md 没有说明 npx skills add 安装方式")
 
     if errors:
         print("Skill validation FAILED:", file=sys.stderr)

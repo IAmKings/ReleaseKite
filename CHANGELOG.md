@@ -8,7 +8,8 @@
 ### Added
 
 - `skills/releasekite/`：AI agent skill，按“接入 / 使用 / 发布 / 维护 / 排障”路由到
-  canonical docs，包含硬约束、最小事实和验证清单；
+  canonical docs，包含硬约束、最小事实和验证清单；标准 `skills/<name>/SKILL.md` 布局，
+  支持 `npx skills add IAmKings/ReleaseKite --skill releasekite`；
 - `scripts/install-skills.sh`：把 canonical skill 安装到 `~/.agents/skills` /
   `~/.claude/skills`（symlink 或 copy）；
 - `scripts/test-skills.py` + CI 校验：frontmatter、必备章节、相对链接、secrets/本机路径；
