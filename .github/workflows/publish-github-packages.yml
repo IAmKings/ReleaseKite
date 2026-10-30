@@ -1,0 +1,55 @@
+name: Publish GitHub Packages
+
+# 把三个库模块发布到 GitHub Packages（Maven）。
+# 触发：手动 workflow_dispatch，或 GitHub Release published。
+# 需要 packages: write；使用仓库自带 GITHUB_TOKEN，无需额外 Secrets。
+#
+# 消费端需要带 read:packages 的 token（见 README「GitHub Packages」）。
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: publish Maven artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # GitHub hosted runner 已包含 Android SDK；不要用 setup-android@v3（其 tools 包已不存在）。
+      - name: Verify toolchain
+        run: |
+          set -euo pipefail
+          java -version
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [ -n "$SDK" ] || { echo "::error::Android SDK env 未设置"; exit 1; }
+          ls "$SDK/platforms"
+          ls "$SDK/build-tools" | tail -3
+
+      - name: Set up Gradle with cache
+        uses: gradle/actions/setup-gradle@v4
+
+      # publishing.gradle.kts 仅在 GITHUB_ACTOR/GITHUB_TOKEN 存在时注册 GitHub Packages 仓库。
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :releasekite-core:publish \
+            :releasekite:publish \
+            :releasekite-compose:publish

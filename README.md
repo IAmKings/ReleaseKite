@@ -176,12 +176,33 @@ implementation("com.github.IAmKings.ReleaseKite:releasekite:0.1.0")
 implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
 ```
 
-GitHub Packages 需要在 fork 中为 `gradle/publishing.gradle.kts` 追加仓库与凭据配置
-（本仓库未内置）。
+### GitHub Packages（需要 token）
+
+仓库已内置 `.github/workflows/publish-github-packages.yml`：GitHub Release published 或手动
+`workflow_dispatch` 时，用 `GITHUB_TOKEN`（`packages: write`）把三个模块发布到 GitHub Packages。
+消费端需要带 `read:packages` 的 token：
+
+```kotlin
+// settings.gradle.kts
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/IAmKings/ReleaseKite")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN") // 需要 read:packages
+        }
+    }
+}
+
+// app/build.gradle.kts（GitHub Packages 使用 artifact 版本 0.1.0）
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
+```
+
+> 不适合作为公开"零配置"渠道：消费者必须持有 GitHub token；公开分发优先用 JitPack。
 
 > **JitPack 构建**：仓库使用与 JitPack 一致的 group（`com.github.IAmKings.ReleaseKite`），
 > 推送 tag 后 JitPack 首次请求会自动构建；本地可用 `scripts/consumer-smoke.sh` 验证
-> mavenLocal 发布物。若未来发布到 Maven Central/GitHub Packages，可用
+> mavenLocal 发布物。若未来发布到 Maven Central，可用
 > `-PGROUP=io.github.iamkings` 覆盖坐标（POM url/scm 已指向本仓库）。
 
 ## 构建与测试

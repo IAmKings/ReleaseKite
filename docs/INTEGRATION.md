@@ -59,7 +59,7 @@ dependencies {
 > 本地验证/离线场景用 `./gradlew publishToMavenLocal` 发布后走 `mavenLocal()`，
 > 坐标为本仓库默认 groupId：`com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0`（见 §1.2）。
 
-### 1.2 本地 Maven 仓库 / GitHub Packages（占位符）
+### 1.2 本地 Maven 仓库 / GitHub Packages
 
 本仓库的发布配置（`gradle/publishing.gradle.kts`）会把三个模块发布到 Maven Local：
 
@@ -78,9 +78,27 @@ dependencies {
 }
 ```
 
-GitHub Packages 需要在 fork 中自行给 `publishing.gradle.kts` 增加
-`maven { url = uri("https://maven.pkg.github.com/IAmKings/ReleaseKite") ... }` 与凭据；
-本仓库没有内置该配置，属于占位能力。
+### GitHub Packages（需要 token）
+
+仓库的 `publish-github-packages.yml` 会在 GitHub Release published 或手动 dispatch 时发布到
+`https://maven.pkg.github.com/IAmKings/ReleaseKite`（使用 `GITHUB_TOKEN`，`packages: write`）。
+消费端需要带 `read:packages` 的 token：
+
+```kotlin
+// settings.gradle.kts
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/IAmKings/ReleaseKite")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN") // read:packages
+        }
+    }
+}
+
+// app/build.gradle.kts（GitHub Packages artifact 版本 0.1.0）
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
+```
 
 ## 2. Application 初始化（约 1 分钟）
 

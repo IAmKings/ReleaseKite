@@ -27,6 +27,15 @@ val repoPath = pomUrl.substringAfter("github.com/", "").trim('/').removeSuffix("
 val scmUrl = "https://github.com/$repoPath.git"
 val scmSsh = "scm:git:ssh://git@github.com/$repoPath.git"
 
+// GitHub Packages 发布：仅在提供 GITHUB_ACTOR/GITHUB_TOKEN 时启用（CI workflow 注入）。
+// publishToMavenLocal / JitPack install 不需要 token，也不会尝试触碰该仓库。
+val ghActor = providers.environmentVariable("GITHUB_ACTOR").orNull
+val ghToken = providers.environmentVariable("GITHUB_TOKEN").orNull
+val ghRepository = providers.environmentVariable("GITHUB_REPOSITORY").orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: repoPath
+
+
 afterEvaluate {
     extensions.configure<PublishingExtension> {
         publications {
@@ -67,6 +76,16 @@ afterEvaluate {
             maven {
                 name = "LocalRepo"
                 url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
+            }
+            if (!ghActor.isNullOrBlank() && !ghToken.isNullOrBlank()) {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/$ghRepository")
+                    credentials {
+                        username = ghActor
+                        password = ghToken
+                    }
+                }
             }
         }
     }
