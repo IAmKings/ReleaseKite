@@ -106,17 +106,22 @@ ReleaseKiteConfig(
 5. `:app:assembleRelease`（宿主按自己的模块名改 `APP_MODULE`）；签名配置由模板注释中的
    Gradle 片段或宿主现有 signingConfig 提供；
 6. `apksigner verify --print-certs` 校验签名、`aapt2 dump badging` 确认包名且非 debuggable；
+   若设置了 `EXPECTED_CERT_SHA256`（见下），证书指纹必须完全一致，否则发布失败；
 7. 产物重命名为 `<app>-<versionName>-<sha7>-release-signed.apk`，生成 `.sha256`；
 8. 用 `release/update-policy.json` 生成 `-update.json`（schema 1）；**policy 文件缺失时**
    该步骤打印 `::warning::` 并跳过（不生成元数据，Release 仍然创建，客户端按 100%/非强制处理）；
-9. tag 含 `-` 时自动 `--prerelease`（Beta），随后 `gh release create` 上传全部资产；
-   `-update.json` / mapping 资产缺失时自动从上传列表中省略。
+9. tag 含 `-` 时自动 `--prerelease`（Beta），随后以 **draft → 上传资产 → publish** 的流程创建
+   Release，避免客户端看到缺资产的半成品；`-update.json` / mapping 资产缺失时自动从上传列表中省略。
 
 模板顶部 `env` 中的 `APP_MODULE` / `APP_NAME` / `APK_DIR` / `UPDATE_POLICY_FILE` 等为宿主需
 修改的占位符；模板不包含任何具体包名，所有仓库/应用标识来自 `GITHUB_REPOSITORY` 与宿主配置。
 
 > 签名密钥是长期身份：一旦客户端安装了某个签名的版本，后续更新 APK 必须使用同一证书，
 > 否则 `ApkValidator` 会拒绝安装。keystore 与口令只放 CI Secrets，必须离线备份。
+>
+> **证书连续性强制校验**：建议在仓库 Variables 中配置 `EXPECTED_CERT_SHA256`（签名证书的
+> SHA-256），并在模板 env 中映射为 `${{ vars.EXPECTED_CERT_SHA256 }}`。设置后每次发布都会
+> 与 `apksigner` 实际指纹比对，换 keystore 会在 CI 直接失败，而不是发布后才发现全量用户无法覆盖升级。
 
 ## 5. Beta（预发布）通道
 

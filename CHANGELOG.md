@@ -59,8 +59,15 @@
 - APK 签名校验在 API 28+ `signingInfo==null` 时回退 deprecated `signatures`；
 - `checkNow` 在下载/校验/待安装权限期间忽略，更新行同步置灰；
 - `releasekite-compose` 以 `api` 暴露 Compose BOM/ui/ui-graphics，修复独立 consumer 编译失败；
+- 下载任务 `onRequestId` 回调先做代际校验再持久化 target/提交任务，过期任务不覆盖新目标、不执行 REPLACE；
+- `ReleaseKiteHost` 对前台引用做配对归还，多窗口重挂/销毁不会累计或误减引用计数；
+- 发布策略 `minSupportedVersion: null` 归一化为缺省值，非法类型由 Python 回归 + CI 拒绝；
+- 发布模板支持 `EXPECTED_CERT_SHA256` 强校验签名连续性；R8 使用 9.1.29 classpath 覆盖，
+  消除 Kotlin 2.4 metadata 解析警告；
+- sample 补 launcher icon/dataExtractionRules；Android 17 移动网络真机覆盖检查/下载/后台/
+  force-stop 续传/安全拦截/同签名安装（设备矩阵见 `docs/ACCEPTANCE_2026-10-30.md`）；
 - sample release 开启 R8/minify + resource shrink，新增独立 consumer smoke 与 CI release 门禁；
-- 文档/测试矩阵同步为 226 例（core 118 / Android 35 / Compose 73 = 94 迁移 + 132 新增）。
+- 文档/测试矩阵同步为 230 例（core 119 / Android 36 / Compose 75 = 94 迁移 + 136 新增）。
 
 ### Known limitations
 

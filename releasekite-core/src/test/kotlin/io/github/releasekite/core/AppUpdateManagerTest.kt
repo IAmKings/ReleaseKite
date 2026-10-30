@@ -112,11 +112,18 @@ class AppUpdateManagerTest {
         var lastWorkId: String? = null
         var enqueueGates: MutableList<CompletableDeferred<Unit>> = mutableListOf()
         var runStateAfterId: DownloadWorkState? = null
+        var beforeBindingGate: CompletableDeferred<Unit>? = null
+        val submittedWorkIds = mutableListOf<String>()
         override suspend fun enqueue(request: DownloadRequest, onRequestId: (String) -> Unit) {
+            val id = nextWorkId
+            val gate = beforeBindingGate
+            beforeBindingGate = null
+            gate?.await()
             if (throwOnEnqueue) throw IllegalStateException("WorkManager unavailable")
             this.request = request
-            lastWorkId = nextWorkId
-            onRequestId(nextWorkId)
+            lastWorkId = id
+            onRequestId(id)
+            submittedWorkIds.add(id)
             runStateAfterId?.let { states.tryEmit(it) }
             enqueueGates.removeFirstOrNull()?.await()
         }
@@ -1306,4 +1313,30 @@ class AppUpdateManagerTest {
         assertNull("404/NoRelease must revoke cached forced release; actual=${manager.state.value.phase}", store.cachedInfo())
     }
 
+    @Test
+    fun staleBindingAfterRetryIsRejectedBeforeSubmission() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val scheduler = FakeScheduler().apply {
+            nextWorkId = "old"
+            beforeBindingGate = gate
+        }
+        val manager = manager(scope = testScope(this), scheduler = scheduler,
+            source = FakeSource(mutableListOf(Result.success(info("0.1.7")))))
+        manager.checkNow()
+        runCurrent()
+        manager.startDownload()
+        runCurrent()
+        advanceTimeBy(20_001)
+        runCurrent()
+        assertTrue(manager.state.value.phase is UpdatePhase.DownloadFailed)
+        scheduler.nextWorkId = "new"
+        manager.retry()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("new"), scheduler.submittedWorkIds)
+        scheduler.emit(DownloadWorkState(workId = "new", status = DownloadWorkState.Status.RUNNING))
+        runCurrent()
+        assertTrue(manager.state.value.phase is UpdatePhase.Downloading)
+    }
 }

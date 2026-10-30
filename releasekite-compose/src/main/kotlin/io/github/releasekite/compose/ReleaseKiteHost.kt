@@ -91,20 +91,33 @@ fun ReleaseKiteHost(
 
     // 前后台跟踪 + 回到前台续装。未初始化时（Preview/纯 UI 演示）跳过全局前后台通知。
     DisposableEffect(lifecycleOwner, manager) {
+        var countedForeground = false
+        fun leaveForeground() {
+            if (countedForeground) {
+                ReleaseKite.onBackground()
+                countedForeground = false
+            }
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START ->
-                    if (ReleaseKite.isInitialized()) ReleaseKite.onForeground()
+                Lifecycle.Event.ON_START -> {
+                    if (!countedForeground && ReleaseKite.isInitialized()) {
+                        ReleaseKite.onForeground()
+                        countedForeground = true
+                    }
+                }
 
                 Lifecycle.Event.ON_RESUME -> manager.onAppResumed()
-                Lifecycle.Event.ON_STOP ->
-                    if (ReleaseKite.isInitialized()) ReleaseKite.onBackground()
+                Lifecycle.Event.ON_STOP -> leaveForeground()
 
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            leaveForeground()
+        }
     }
 
     Box(modifier) {

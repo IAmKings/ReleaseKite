@@ -1,4 +1,21 @@
 // ReleaseKite 根工程：插件按模块应用；这里只做公共任务与 JitPack 兼容入口。
+//
+// 显式使用与 Kotlin 2.4 元数据兼容的 R8（AGP 8.13 自带的 R8 在 release 构建时会打印
+// “kotlin metadata 解析失败”警告；与 ZhiBox 相同的版本组合通过该 classpath 覆盖 R8，
+// 让 R8 版本与 Kotlin 2.4 metadata 对齐）。storage.googleapis 仅用于该 group 的兜底。
+buildscript {
+    repositories {
+        google()
+        maven("https://storage.googleapis.com/r8-releases/raw") {
+            content { includeGroup("com.android.tools") }
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools:r8:9.1.29")
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false

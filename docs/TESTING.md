@@ -13,7 +13,7 @@
 | Compose UI | `releasekite-compose/src/test` | Robolectric + `createComposeRule` | 弹窗各 phase/按钮/取消规则/testTag、设置行、设置区、中英文案、格式化 |
 | 真机 | 宿主应用（或接入发布链路的 sample） | 人工 | 系统安装器、未知来源权限、通知、弱网/镜像、跨进程续传、OEM 差异 |
 
-## 2. 自动化矩阵（当前 226 个用例 = 94 个迁移 + 132 个新增）
+## 2. 自动化矩阵（当前 230 个用例 = 94 个迁移 + 136 个新增）
 
 ### 2.1 迁移用例（94，逐条对应 ZhiBox 行为，详见 [`MIGRATION_ZHIBOX.md`](MIGRATION_ZHIBOX.md)）
 
@@ -21,7 +21,7 @@
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
-| `:releasekite-core` `AppUpdateManagerTest` | 33（+8 新增） | 状态机：节流、手动检查代际、下载成功/失败、安装、dismiss、强制/灰度、历史 FAILED、成功去重、看门狗、迟到入队 |
+| `:releasekite-core` `AppUpdateManagerTest` | 33（+9 新增） | 状态机：节流、手动检查代际、下载成功/失败、安装、dismiss、强制/灰度、历史 FAILED、成功去重、看门狗、迟到入队 |
 | `:releasekite-core` `UpdateApiAndDownloaderTest` | 14（+3 新增） | API 200/404/403 限流、元数据直连/重定向/镜像/坏 JSON、下载镜像回退、SHA 不符、无 checksum、Content-Range、URL 安全负向 |
 | `:releasekite-core` `UpdateModelsTest` | 23 | 版本解析/预发布排序、Release 解析（digest/.sha256/缺资产/多资产）、markdown 清洗、启动策略 |
 | `:releasekite-core` `UpdateRolloutTest` | 6 | 分桶确定性/边界、灰度资格、强制判定、元数据 schema 校验 |
@@ -29,7 +29,7 @@
 | `:releasekite` `SharedPrefsUpdateStoreTest` | 2（+4 新增） | 缓存元数据 save→read 往返、旧缓存无 schema 标记未知、target prefs 独立绑定/恢复 |
 | `:releasekite-compose` `ReleaseKiteUpdateDialogTest` | 10（+12 新增） | 弹窗 5 态、强制/失败逃生、设置行状态、testTag、空 notes、按钮回调 |
 
-### 2.2 新增用例（132，ReleaseKite 泛化、加固与 UI 细节）
+### 2.2 新增用例（136，ReleaseKite 泛化、加固与 UI 细节）
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
@@ -37,10 +37,10 @@
 | `:releasekite-core` `InMemoryUpdateStoreTest` | 6 | 测试 store 的接口契约（默认值/可初始化/缓存时间/routeHealth 替换） |
 | `:releasekite-core` `UpdateConfigGeneralizationTest` | 12 | 自定义 APK pattern/checksum/metadata 后缀、可选 checksum（大小校验）、自定义超时/间隔、UA/镜像透传 |
 | `:releasekite-core` `UpdateApiAndDownloaderTest` 新增部分 | 3 | 安全链负向：非 https / 非白名单 host / 非本仓库 release 路径 → `IncompleteRelease`（建连前拒绝） |
-| `:releasekite-core` `AppUpdateManagerTest` | 8 | 后台完成通知；NoRelease 撤回强制缓存（新鲜/过期两路径）；恢复下载失败保持强制；禁用 Beta 不展示旧 Beta 缓存；冷启动与恢复下载身份竞争；`verifyCachedForced` 下载期 phase 守卫；状态管道异常恢复；看门狗/代际加固回归 |
+| `:releasekite-core` `AppUpdateManagerTest` | 9 | 后台完成通知；NoRelease 撤回强制缓存（新鲜/过期两路径）；恢复下载失败保持强制；禁用 Beta 不展示旧 Beta 缓存；冷启动与恢复下载身份竞争；`verifyCachedForced` 下载期 phase 守卫；状态管道异常恢复；看门狗/代际加固回归 |
 | `:releasekite` `SharedPrefsUpdateStoreTest` | 4 | `cache_meta_schema`/`cached_at` 持久化清理、`cached_meta_url`、target prefs 绑定与不串版本 |
 | `:releasekite` `UpdateDownloadContractTest` | 6 | Worker input/output 键、失败固定字符串编解码（逐类型 wire code）、缺 version 快速失败、常量对齐契约 |
-| `:releasekite` `WorkManagerUpdateDownloadSchedulerTest` | 11 | 入队前同步 workId、无约束、精确取消、legacy 无目标取消、target 跨调度器/缓存刷新恢复、WAITING/RUNNING/SUCCEEDED target 映射、flow 异常不终止、并发 enqueue |
+| `:releasekite` `WorkManagerUpdateDownloadSchedulerTest` | 12 | 入队前同步 workId、无约束、精确取消、legacy 无目标取消、target 跨调度器/缓存刷新恢复、WAITING/RUNNING/SUCCEEDED target 映射、flow 异常不终止、并发 enqueue |
 | `:releasekite` `ReleaseKiteFacadeTest` | 1 | `initialize` 幂等、读取宿主版本名/版本号 |
 | `:releasekite` `AndroidApkValidatorSignatureTest` | 3 | API 28+ `signingInfo` 优先、缺失时回退 deprecated `signatures`、无签名信息返回空 |
 | `:releasekite` `AndroidUpdateInstallerTest` | 2 | 安装权限 API 守卫、FileProvider/Intent 路径 |
@@ -52,6 +52,8 @@
 | `:releasekite-compose` `ReleaseKiteUpdateDialogZhTest` | 10 | 中文资源：弹窗/强制/失败/权限/行/设置区 |
 | `:releasekite-compose` `ReleaseKiteFormattingTest` | 5 | 字节/日期格式化、进度百分比边界 |
 | `:releasekite-compose` `ReleaseKiteUpdateDialogCancellationTest` | 15 | 取消规则闭环：DialogProperties 语义、不可取消负向交互、可取消正相对照（返回键/点外部真实事件） |
+
+| `:releasekite-compose` `ReleaseKiteHostLifecycleTest` | 2 | Host 移除/重挂与 STOP 后销毁的前台引用平衡 |
 
 ## 3. 门禁命令
 
@@ -216,9 +218,16 @@ CI（`.github/workflows/ci.yml`）在每次 push/PR 执行：JDK 21 + Android SD
 
 ## 6. 当前自动化基线（0.1.0）
 
-- `:releasekite-core:test`：118 例（线性 JVM，秒级）；
-- `:releasekite:testDebugUnitTest`：35 例（Robolectric/WorkManager）；
-- `:releasekite-compose:testDebugUnitTest`：73 例（Robolectric Compose，中英双语）；
-- 合计 226 例，0 失败为门禁。
+- `:releasekite-core:test`：119 例（线性 JVM，秒级）；
+- `:releasekite:testDebugUnitTest`：36 例（Robolectric/WorkManager）；
+- `:releasekite-compose:testDebugUnitTest`：75 例（Robolectric Compose，中英双语）；
+- 合计 230 例，0 失败为门禁。
 
 > 用例数随实现演进可能增加；以测试源码中的 `@Test` 计数与 CI 报告为准。
+
+## 复审回归（2026-10-30）
+
+- Manager：旧任务的 id 绑定晚于新重试时，拒绝提交旧任务。
+- WorkManager：回调拒绝后，新任务及其持久化目标保持不变，旧 id 未入库。
+- Host：移除/重挂正确归还前台计数；STOP 后再 dispose 不会扣除其它窗口的引用。
+- 发布策略：`python3 scripts/test-release-metadata.py` 另有 2 个 Python 测试，覆盖缺失、null、空串、合法版本与非法版本。CI 自动运行。

@@ -34,7 +34,7 @@ import kotlinx.coroutines.sync.withLock
  * - `enqueue` 等待异步入队结果（`await()` 失败抛异常，Manager 转为可重试失败态）。
  *
  * R2 加固（三方深审）：
- * - [enqueue] 用 [Mutex] 把「绑定 target → 回调 workId → 提交任务」包成原子步骤，
+ * - [enqueue] 用 [Mutex] 把「回调校验 workId → 绑定 target → 提交任务」包成原子步骤，
  *   并发入队时不会出现 A 的 target 被 B 覆盖后 A 才提交的单槽错位；
  * - [observe] 的 map 里**不再 await 取消操作**、target 读取 runCatching 兜底：
  *   map 内抛异常会终止整条 StateFlow 上游 collector，Manager 将永久失去下载状态流；
@@ -53,18 +53,16 @@ class WorkManagerUpdateDownloadScheduler(context: Context) : UpdateDownloadSched
         SharedPrefsUpdateStore.TARGET_PREFS_NAME,
     )
 
-    /** 单槽 target 的并发保护：绑定 + 回调 + 入队必须原子完成。 */
+    /** 单槽 target 的并发保护：回调校验 + 绑定 + 入队必须原子完成。 */
     private val enqueueMutex = Mutex()
 
     override suspend fun enqueue(request: DownloadRequest, onRequestId: (String) -> Unit) {
         enqueueMutex.withLock {
             val workRequest = buildWorkRequest(request)
             val workId = workRequest.id.toString()
-            // 先持久化「任务 id ↔ 下载目标」绑定（独立 prefs，进程被杀后仍可按 id 恢复）。
-            targets.bindDownloadTarget(workId, request.info)
-            // 回归 746b297/733f78a：必须在任务实际提交前同步回传 id，
-            // 让 Manager 先绑定本次下载，避免 RUNNING 观察早于 id 绑定被看门狗误杀。
+            // 回调可抛异常拒绝过期任务；拒绝前不能覆盖正在运行任务的目标。
             onRequestId(workId)
+            targets.bindDownloadTarget(workId, request.info)
             // 等待 WorkManager 异步入队结果；失败会抛异常，由 Manager 转为可重试失败态。
             workManager.enqueueUniqueWork(
                 UpdateDownloadContract.UNIQUE_WORK,

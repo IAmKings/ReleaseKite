@@ -14,6 +14,8 @@ name: Release (signed APK)
 #   RELEASE_STORE_PASSWORD   keystore 口令
 #   RELEASE_KEY_ALIAS        key alias
 #   RELEASE_KEY_PASSWORD     key 口令
+#   EXPECTED_CERT_SHA256     可选，建议放在 repository Variables：固定签名证书 SHA-256；
+#                            非空时发布前比对，换 keystore 会直接失败（客户端要求同签名升级）。
 #
 # 宿主 build.gradle.kts 需要把上述环境变量接到 signingConfig 上，例如：
 #   signingConfigs {
@@ -31,7 +33,7 @@ name: Release (signed APK)
 # 建议：把每次发布 apksigner 输出的证书 SHA-256 记入发布记录，换机/换 CI 后核对指纹一致，
 # 不要轮换签名证书；若证书丢失，只能先用旧签名发布「引导用户卸载重装」的版本，否则无法自动升级。
 #
-# 策略文件路径注意：宿主若沿用 ReleaseKite 仓库的 .gitignore（其中 `release/` 用于忽略签名材料），
+# 策略文件路径注意：若宿主自己的 .gitignore 忽略了 `release/`（常见于忽略签名材料），
 # 需要给策略文件加例外，例如：
 #   !release/
 #   !release/update-policy.json
@@ -57,6 +59,9 @@ env:
   UPDATE_POLICY_FILE: release/update-policy.json
   # 可选：指向「只包含当前版本段落」的发布说明文件；留空则用 GitHub 自动生成说明。
   # 应用内更新弹窗展示的是 Release body，建议只放当前版本内容（历史全文会被客户端截断）。
+  # 可选：固定期望的签名证书 SHA-256（建议用 GitHub repository variable，不写回仓库）。
+  # 非空时，发布前会比对 apksigner 输出；换 keystore 会直接失败，避免客户端全量拒装。
+  EXPECTED_CERT_SHA256: ''
   RELEASE_NOTES_FILE: ''
   JAVA_VERSION: '21'
 
@@ -150,6 +155,16 @@ jobs:
           # 证书连续性：记录本次签名证书 SHA-256，发布记录/审计时与历史版本核对。
           CERT_SHA="$(grep -m1 'certificate SHA-256 digest:' /tmp/apksigner.txt | sed -E 's/.*digest:[[:space:]]*//' || true)"
           echo "signing certificate SHA-256: ${CERT_SHA:-unknown}"
+          if [ -n "${EXPECTED_CERT_SHA256:-}" ]; then
+            EXPECTED_CERT="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr 'A-F' 'a-f' | tr -d '[:space:]')"
+            ACTUAL_CERT="$(printf '%s' "${CERT_SHA:-}" | tr 'A-F' 'a-f' | tr -d '[:space:]')"
+            [ -n "$ACTUAL_CERT" ] || { echo "::error::无法从 apksigner 解析证书指纹，无法校验连续性"; exit 1; }
+            [ "$ACTUAL_CERT" = "$EXPECTED_CERT" ] || {
+              echo "::error::签名证书与 EXPECTED_CERT_SHA256 不一致（换 key 后客户端将无法覆盖升级）：actual=$ACTUAL_CERT expected=$EXPECTED_CERT"
+              exit 1
+            }
+            echo "signing certificate continuity OK: $ACTUAL_CERT"
+          fi
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             {
               echo "### Signing certificate"
@@ -208,7 +223,8 @@ jobs:
           rollout = int(policy.get("rolloutPercent", 100))
           if not 0 <= rollout <= 100:
               raise SystemExit(f"invalid rolloutPercent: {rollout}")
-          min_supported = str(policy.get("minSupportedVersion", "")).strip()
+          min_supported = policy.get("minSupportedVersion", "")
+          min_supported = "" if min_supported is None else str(min_supported).strip()
           if min_supported and not re.fullmatch(r"v?\d+(\.\d+)*([.-][0-9A-Za-z.]+)?", min_supported):
               raise SystemExit(f"invalid minSupportedVersion: {min_supported}")
           payload = {

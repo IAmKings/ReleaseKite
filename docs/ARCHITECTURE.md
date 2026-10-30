@@ -206,9 +206,9 @@ Verifying ──校验失败──▶ DownloadFailed(info, ApkInvalid/...)
    用例**（core：fake store/installer/source + Mock HTTPS，无 Robolectric/真机，秒级跑完），
    其余 12 个是 Android/UI 专属用例（`:releasekite` 的 SharedPrefs 2 个、`:releasekite-compose`
    的弹窗 10 个，均用 Robolectric）。更新逻辑（版本/策略/灰度/状态机）由纯 JVM 用例守住，
-   这是它能被持续回归的前提。发布前深度审查后又补充了 132 个用例（并发/安全 URL 负向/
-   verify 竞态/状态管道恢复/FGS 降级/target 绑定与恢复/前后台引用计数/取消规则等），
-   当前总计 **226**（core 118 / Android 35 / Compose 73）。
+   这是它能被持续回归的前提。多轮深审后又补充了 136 个用例（并发/安全 URL 负向/
+   verify 竞态/状态管道恢复/FGS 降级/target 绑定与恢复/前后台引用计数/取消规则/
+   Host 生命周期等），当前总计 **230**（core 119 / Android 36 / Compose 75）。
 2. **边界由编译器强制**：`core` 不引入 Android 依赖，任何误用 `Context`/`PackageManager`
    的代码在编译期就失败，避免平台细节渗透进领域层。
 3. **可移植性**：版本比较、Release JSON 解析、灰度分桶、线路选择、下载协议（含 SHA/重定向/

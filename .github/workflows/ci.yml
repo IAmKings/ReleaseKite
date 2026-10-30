@@ -1,7 +1,7 @@
 name: CI
 
 # ReleaseKite 质量门禁：
-#   1. 纯 JVM 领域层单测            :releasekite-core:test（200 例的一部分）
+#   1. 纯 JVM 领域层单测            :releasekite-core:test（230 例的一部分）
 #   2. Android 适配层单测           :releasekite:testDebugUnitTest（Robolectric）
 #   3. Compose UI 单测              :releasekite-compose:testDebugUnitTest（Robolectric）
 #   4. Debug 示例可构建             :sample:assembleDebug
@@ -61,6 +61,9 @@ jobs:
 
       - name: Set up Gradle with cache
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Release metadata policy tests
+        run: python3 scripts/test-release-metadata.py
 
       - name: Unit tests (core / android / compose)
         run: |

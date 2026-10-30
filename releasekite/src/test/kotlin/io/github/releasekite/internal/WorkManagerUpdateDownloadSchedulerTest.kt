@@ -20,6 +20,7 @@ import io.github.releasekite.core.UpdateInfo
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -406,5 +407,29 @@ class WorkManagerUpdateDownloadSchedulerTest {
     private companion object {
         const val WAIT_TIMEOUT_MS = 3_000L
         const val POLL_INTERVAL_MS = 20L
+    }
+    @Test
+    fun rejectedSubmissionPreservesNewerWorkAndItsTarget() = runBlocking {
+        withContext(Dispatchers.IO) {
+            val wm = WorkManager.getInstance(context)
+            val request = sampleRequest()
+            val newer = buildConstrainedWork(request)
+            val targets = SharedPrefsUpdateStore(context, SharedPrefsUpdateStore.TARGET_PREFS_NAME)
+            targets.bindDownloadTarget(newer.id.toString(), request.info)
+            wm.enqueueUniqueWork(UpdateDownloadContract.UNIQUE_WORK, ExistingWorkPolicy.REPLACE, newer).await()
+            var rejectedId = ""
+            try {
+                WorkManagerUpdateDownloadScheduler(context).enqueue(request.copy(
+                    info = request.info.copy(versionName = "1.0.0"))) { id ->
+                    rejectedId = id
+                    throw CancellationException("Superseded generation")
+                }
+                fail("Rejected request must abort enqueue")
+            } catch (expected: CancellationException) {
+                assertEquals(WorkInfo.State.ENQUEUED, wm.workInfoOf(newer.id.toString()).state)
+                assertEquals(request.info, targets.downloadTarget(newer.id.toString()))
+                assertNull(wm.getWorkInfoById(UUID.fromString(rejectedId)).get())
+            }
+        }
     }
 }

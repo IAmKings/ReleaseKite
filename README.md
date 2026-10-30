@@ -22,7 +22,7 @@ SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Bet
 | Beta 通道 | GitHub prerelease（tag 含 `-`）+ semver 预发布排序；stable 永远看不到 Beta |
 | 灰度/强制 | Release 资产 `-update.json`（schema 1）：`rolloutPercent` 本地确定性分桶、`minSupportedVersion` 强制更新 |
 | 弱网可用 | 直连 GitHub CDN 失败时按镜像前缀回退；线路健康/冷却/自动换路 |
-| 可测试 | 94 个从 ZhiBox 迁移的用例 + 132 个新增，共 **226** 个自动化用例（core 118 / Android 35 / Compose 73），全部协作者可注入 |
+| 可测试 | 94 个从 ZhiBox 迁移的用例 + 136 个新增，共 **230** 个自动化用例（core 119 / Android 36 / Compose 75），全部协作者可注入 |
 
 ## 与 ZhiBox 的关系
 

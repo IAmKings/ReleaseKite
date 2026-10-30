@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 示例应用图标：简单的下载/风筝图形；真实宿主请替换为自己的 launcher icon。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF2F6FED"
+        android:pathData="M54,12 L88,42 L88,66 L54,96 L20,66 L20,42 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,30 L58,30 L58,58 L70,46 L76,52 L54,74 L32,52 L38,46 L50,58 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,80 L70,80 L70,86 L38,86 Z" />
+</vector>

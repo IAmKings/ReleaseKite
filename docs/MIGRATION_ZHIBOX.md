@@ -9,22 +9,22 @@
 
 | 源测试类（ZhiBox） | 用例数 | ReleaseKite 测试类 | 迁移 | 新增 |
 |---|---|---|---|---|
-| `AppUpdateManagerTest` | 33 | `:releasekite-core` `AppUpdateManagerTest` | 33 | +8 |
+| `AppUpdateManagerTest` | 33 | `:releasekite-core` `AppUpdateManagerTest` | 33 | +9 |
 | `UpdateApiAndDownloaderTest` | 14 | `:releasekite-core` `UpdateApiAndDownloaderTest` | 14 | +3 |
 | `UpdateModelsTest` | 23 | `:releasekite-core` `UpdateModelsTest` | 23 | 0 |
 | `UpdateRolloutTest` | 6 | `:releasekite-core` `UpdateRolloutTest` | 6 | 0 |
 | `UpdateRoutesTest` | 6 | `:releasekite-core` `UpdateRoutesTest` | 6 | 0 |
 | `UpdateStorePersistenceTest` | 2 | `:releasekite` `SharedPrefsUpdateStoreTest` | 2 | +4 |
 | `AppUpdateDialogTest` | 10 | `:releasekite-compose` `ReleaseKiteUpdateDialogTest` | 10 | +12 |
-| **合计** | **94** | | **94** | **132** |
+| **合计** | **94** | | **94** | **136** |
 
 > 迁移用例的运行方式分布：**82 个纯 JVM**（`:releasekite-core`：Manager 33 + API/Downloader 14 +
 > Models 23 + Rollout 6 + Routes 6）+ **2 个 Robolectric**（`:releasekite` `SharedPrefsUpdateStoreTest`）
 > + **10 个 Robolectric/Compose**（`:releasekite-compose` `ReleaseKiteUpdateDialogTest`）。
-> 三个模块当前自动化总计 **226 = 94 迁移 + 132 新增**（core 118 / Android 35 / Compose 73）。
-> 新增部分包含 T6 深审补齐的取消规则回归（15）、R1/R2/R3 发布前深审的并发/安全/韧性回归
+> 三个模块当前自动化总计 **230 = 94 迁移 + 136 新增**（core 119 / Android 36 / Compose 75）。
+> 新增部分包含 T6 深审补齐的取消规则回归（15）、多轮深审的并发/安全/韧性/生命周期回归
 > （URL 负向 3、verifyCachedForced 竞态、collector 恢复、FGS 降级、target 绑定/恢复、
-> NeedInstallPermission 点击、前后台引用计数等）。
+> NeedInstallPermission 点击、前后台引用计数、Host 生命周期、下载代际拒绝顺序等）。
 
 迁移原则：
 
@@ -132,13 +132,13 @@
 ## 5. 迁移验证方式
 
 ```bash
-# core（纯 JVM）：82 个迁移用例 + 36 个新增 = 118 例
+# core（纯 JVM）：82 个迁移用例 + 37 个新增 = 119 例
 ./gradlew :releasekite-core:test
 
-# Android 适配（Robolectric）：SharedPrefs 迁移 2 + 新增 33 = 35 例
+# Android 适配（Robolectric）：SharedPrefs 迁移 2 + 新增 34 = 36 例
 ./gradlew :releasekite:testDebugUnitTest
 
-# Compose UI（Robolectric）：Dialog 迁移 10 + 新增 63 = 73 例
+# Compose UI（Robolectric）：Dialog 迁移 10 + 新增 65 = 75 例
 ./gradlew :releasekite-compose:testDebugUnitTest
 
 # 真实仓库端到端（可选，会访问 GitHub；示例下载会被签名校验拒绝，属预期）

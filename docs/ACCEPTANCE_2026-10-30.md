@@ -11,10 +11,10 @@
 - 禁用 Beta 时在启动协程之前清除旧通道缓存并重置节流。
 - 示例下载、校验演示在 3 秒后退出；真实下载的不可取消规则不变。
 - 新增 8 个回归测试。**本轮验收时** core 113、Android 15、Compose 72，共 200 个测试；
-  随后发布前三方深度审查又补充 26 个测试，当前基线为 **226**（core 118 / Android 35 / Compose 73）。
+  随后多轮深度审查继续补充测试，当前基线为 **230**（core 119 / Android 36 / Compose 75）。
 
 自动化结果（验收时）：200/200 通过，0 失败、0 跳过；Debug 示例构建与三个 Android 模块 lintDebug 通过，无 error 级 lint。
-发布前深审后：226/226 通过；Debug/Release sample（R8/minify + resource shrink）、三模块 release AAR/JAR、lintDebug + lintRelease、publishToMavenLocal 全部通过。
+发布前多轮深审后：230/230 通过；Debug/Release sample（R8/minify + resource shrink）、三模块 release AAR/JAR、lintDebug + lintRelease、publishToMavenLocal 全部通过。
 
 最终源码的 R8 Release 构建已从「临时启用」升级为 `sample` release 变体的常驻门禁（`isMinifyEnabled=true` + `isShrinkResources=true`），CI 与本地门禁都会验证；真机安装、启动及首页渲染也已通过。
 
@@ -42,5 +42,60 @@
 
 - 自动化与本机冒烟通过后可继续内测；尚不满足 TESTING.md 要求的至少两台设备、两种网络的完整发布放行标准。
 - 尚未在真实发布仓库演练 Beta/灰度/强制策略变更、镜像回退、离线重试和用户取消系统安装后的重启行为；对应逻辑主要由自动化回归覆盖。
-- R8 构建仍提示 Kotlin 元数据兼容警告，Gradle 仍提示后续 Kotlin 版本的最低 Gradle 版本变更；本次不升级构建工具链。
+- R8 构建已通过 `com.android.tools:r8:9.1.29` classpath 覆盖（与 Kotlin 2.4 metadata 对齐），
+  release 构建不再出现 Kotlin metadata 解析警告；Gradle 仍提示后续 Kotlin 版本的最低 Gradle
+  版本变更，本次不升级构建工具链。
 - 旧版本已经入队、未保存独立目标的任务会停止接管，保留半包供重新下载；不会将新的检查缓存误当作旧任务目标。
+
+
+## 第二轮复审修复与针对性真机验收
+
+修复本轮 1 个 P1、2 个 P2：
+
+- 过期下载代际在 `onRequestId` 回调中抛取消异常，调度器先执行回调校验，再持久化目标并提交任务。拒绝的任务既不覆盖 target，也不执行 REPLACE。
+- Host 记录自身是否持有前台引用，STOP 或 dispose 时配对归还一次；重挂和多窗口不会累计或误减计数。
+- 发布策略的 `minSupportedVersion: null` 归一化为缺省值；保留对非法版本、布尔值、数组和对象的拒绝。Python 回归加入 CI。
+
+自动化：新增 4 个 Kotlin/Android/Compose 回归，当前为 core 119 / Android 36 / Compose 75，共 230 个；另有 2 个发布模板 Python 测试。全部通过。Debug/Release sample、Debug/Release lint、独立 mavenLocal consumer 的 R8 发布物消费测试均通过。
+
+同一台小米 23078PND5G / Android 14 的针对性实测：
+
+- 实际 ReleaseKiteHost 移除、重新挂载后，前台标记按 true → false → true → false 变化。
+- 实际 WorkManager 调度器先提交新任务，再拒绝旧代际；新 WorkRequest 仍存在，旧 id 未入库，observe 返回的目标仍是新任务目标。
+- 临时 Activity 显示 PASS；其源码与 manifest 均在独立临时目录，不进入仓库。最终恢复普通示例包。
+- 普通示例恢复后，真实手动检查返回 ZhiBox 0.1.17，正常显示可稍后关闭的更新弹窗。
+
+本轮针对任务调度和 Host 生命周期验收，未重复前次同签名覆盖升级、完整下载或跨设备/跨网络验收；仍不代替完整发布放行清单。
+
+## 第三轮：移动网络真机放行矩阵（PJZ110 / Android 17）
+
+设备 B：OnePlus PJZ110，Android 17（SDK 37），中国广电移动网络（Wi‑Fi 关闭，VPN FlyShadow
+开启），安装 sample debug 0.0.1；与历史设备 A（小米 K60U / Android 14 / Wi‑Fi）合并覆盖矩阵。
+本轮没有修改设备上已有其它应用的数据；sample 通过 `adb install -r` 更新。
+
+| 矩阵项 | A：K60U / Android 14 / Wi‑Fi（历史记录） | B：PJZ110 / Android 17 / 移动网络（本轮） |
+|---|---|---|
+| 真实 GitHub 检查 / 弹窗 | ✅ 0.1.17 更新框 | ✅ 0.1.17，版本/67.2MB/更新时间/说明正确；sample 关闭 metadata，弹窗可「稍后」关闭 |
+| 通知权限拒绝后继续下载 | ✅ | ✅ 拒绝通知权限；下载继续，WorkManager 前台服务 ID 4201 启动，进度到 27%+ 并完成 |
+| 后台下载 / Home | ✅ | ✅ Home 后 WorkManager 继续，worker 以 SUCCESS 结束 |
+| 跨进程 `.part` 续传 | ✅ force-stop 后续传 | ✅ 禁用移动数据后 `.part`=14,994,560 B；force-stop；恢复网络重开进程后同一 `.part` 保留，重试从 15.4MB 继续到 45.7MB 并完成 |
+| SHA-256 / 包名 / 签名拦截 | ✅ 镜像下载 + SHA 通过、release 签名同包安装成功 | ✅ 真实 ZhiBox APK 被 `AndroidApkValidator` 以「安装包无效或签名不一致」拒绝，未进入安装器 |
+| Android 17 通知拒绝 + FGS | — | ✅ 通知拒绝下 FGS `dataSync` 启动、下载不崩；完成后回前台可重试/续装路径正常 |
+| 未知来源权限 / 系统安装器 / 同签名覆盖升级 | ✅ 0.1.6→0.1.7、0.1.7→0.1.8 真机安装，数据保留 | ✅ 真实 `AndroidApkValidator` 校验 0.0.2 通过；真实 `AndroidUpdateInstaller` 经 FileProvider 拉起系统安装器；授权未知来源并经 OPPO 风险确认后 0.0.1→0.0.2（versionCode 2）安装成功，私有 files 标记保留 |
+| Beta / 灰度 0%、100% / 强制 / 镜像回退 | 未在真实发布仓库演练（需临时 Release/policy） | 未演练（需真实发布仓库；逻辑由 230 自动化用例覆盖） |
+| 0 P0 | ✅ | ✅ 本轮未发现 P0 |
+
+证据（B 设备）：
+- [检查弹窗](device-matrix-2026-10-30/pjz110-01-check-dialog.png)
+- [通知拒绝后下载中](device-matrix-2026-10-30/pjz110-02-downloading-notif-denied.png)
+- [签名/包名拦截](device-matrix-2026-10-30/pjz110-03-signature-rejected.png)
+- [数据关闭后保留 `.part`](device-matrix-2026-10-30/pjz110-05-download-paused.png)
+- [重开进程后续传](device-matrix-2026-10-30/pjz110-06-resumed.png)
+- [同签名升级安装完成](device-matrix-2026-10-30/pjz110-07-install-complete.png)
+
+边界：本轮在 B 上已覆盖「检查 → 弹窗 → 权限拒绝 → 下载 → 后台 → force-stop/续传 →
+安全拦截 → 同签名系统安装」，安装正向使用临时验收 Activity + 本地 0.0.2 APK（库真实
+`AndroidApkValidator`/`AndroidUpdateInstaller`/FileProvider），临时入口与 APK 仅在独立临时
+工程中构建，未写入仓库；验收后已卸载并恢复普通 sample 0.0.1。Beta/灰度/强制/镜像的发布侧
+演练仍需单独测试仓库与 Release policy。移动网络下载 67.2MB 属真实验收数据消耗；设备网络/VPN
+环境仅代表当前一次实测，不等价于所有运营商/受限网络组合。

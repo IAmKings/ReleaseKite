@@ -562,3 +562,6 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 恢复 WAITING/RUNNING/SUCCEEDED 时优先使用该目标，不使用可能已刷新为其他版本的检查缓存。
 错误输出使用固定字符串编码，不依赖混淆后的运行时类名。
 Android 适配层不接管缺少 workId 绑定目标的旧任务；未完成任务会取消并保留半包，供用户重新发起下载。
+
+`enqueue` 必须先同步调用 `onRequestId` 完成代际校验；回调抛异常时原样传播，不能修改下载目标或提交 WorkRequest。校验通过后，在调度器锁内持久化 target 并提交任务。
+`ReleaseKiteHost` 的前台引用由各自观察者持有，STOP 或移出组合时只归还一次。

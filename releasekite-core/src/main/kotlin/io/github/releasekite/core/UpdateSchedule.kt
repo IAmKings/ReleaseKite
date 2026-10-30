@@ -51,6 +51,7 @@ interface UpdateDownloadScheduler {
      *
      * [onRequestId] 必须在任务实际提交前同步回调，让 Manager 先绑定任务 id，
      * 避免 RUNNING 观察早于 enqueue 返回时被看门狗误杀（回归提交 4c2a56c/746b297/733f78a）。
+     * 回调抛异常表示拒绝提交；实现必须在修改持久化目标和入队之前调用并传播异常。
      */
     suspend fun enqueue(request: DownloadRequest, onRequestId: (String) -> Unit)
 

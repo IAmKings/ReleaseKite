@@ -381,8 +381,8 @@ class UpdateManager(
                     if (generation == downloadGeneration.get()) {
                         activeDownloadWorkId = id
                     } else {
-                        // 迟到入队只清理自己的任务，不能覆盖/取消新代际。
-                        scheduler.cancel(id)
+                        // 尚未提交的旧 id 无法被取消，必须在持久化目标和入队前终止。
+                        throw CancellationException("Superseded download generation")
                     }
                 }
                 // await 返回时如果已被看门狗/新重试淘汰，只清理自己的任务。
