@@ -24,3 +24,4 @@ dist/
 # 文档站构建产物 / 本地 venv
 site/
 .venv-docs/
+__pycache__/
