@@ -57,7 +57,7 @@ jobs:
           published=1
           for module in releasekite-core releasekite releasekite-compose; do
             url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.pom"
-            code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+            code="$(curl -sSL -m 30 -o /dev/null -w '%{http_code}' \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
             echo "$code $url"
             [ "$code" = "200" ] || published=0
@@ -97,7 +97,7 @@ jobs:
             module="${spec%%:*}"
             ext="${spec##*:}"
             url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.${ext}"
-            code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+            code="$(curl -sSL -m 30 -o /dev/null -w '%{http_code}' \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
             echo "$code $url"
             [ "$code" = "200" ] || { echo "::error::GitHub Packages artifact 不可用: $url"; exit 1; }
