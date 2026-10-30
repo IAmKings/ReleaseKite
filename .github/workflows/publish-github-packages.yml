@@ -53,3 +53,27 @@ jobs:
             :releasekite-core:publish \
             :releasekite:publish \
             :releasekite-compose:publish
+
+      # 用同仓库 GITHUB_TOKEN（packages: write 含读权限）验证包真实可下载，
+      # 防止“Gradle publish 成功但制品不可见”的假绿。
+      - name: Verify package artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -1)"
+          GROUP="$(sed -n 's/^GROUP=//p' gradle.properties | head -1)"
+          GROUP_PATH="${GROUP//./\/}"
+          BASE="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/${GROUP_PATH}"
+          for spec in "releasekite-core:pom" "releasekite-core:jar" \
+                      "releasekite:pom" "releasekite:aar" \
+                      "releasekite-compose:pom" "releasekite-compose:aar"; do
+            module="${spec%%:*}"
+            ext="${spec##*:}"
+            url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.${ext}"
+            code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
+            echo "$code $url"
+            [ "$code" = "200" ] || { echo "::error::GitHub Packages artifact 不可用: $url"; exit 1; }
+          done
