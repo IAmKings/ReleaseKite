@@ -1,80 +1,62 @@
-# ReleaseKite
+<p align="center">
+  <img src="docs/brand/releasekite-mark-512.png" alt="ReleaseKite" width="96">
+</p>
+
+<h1 align="center">ReleaseKite</h1>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/releasekite-logo-dark-1024.png">
-    <img src="docs/brand/releasekite-logo-1024.png" alt="ReleaseKite" width="440">
-  </picture>
+  以 GitHub Release 为版本源的 Android 应用内更新库<br>
+  检查更新 · 更新弹窗 · 下载 · 安全校验 · 系统安装
 </p>
 
 <p align="center">
-  <a href="https://jitpack.io/#IAmKings/ReleaseKite"><img src="https://jitpack.io/v/IAmKings/ReleaseKite.svg" alt="Release"></a>
+  <a href="https://jitpack.io/#IAmKings/ReleaseKite"><img src="https://jitpack.io/v/IAmKings/ReleaseKite.svg" alt="JitPack"></a>
+  <a href="https://iamkings.github.io/ReleaseKite/">在线文档</a> ·
+  <a href="#5-分钟接入">快速开始</a> ·
+  <a href="https://github.com/IAmKings/ReleaseKite/releases">Releases</a>
 </p>
 
-仓库: https://github.com/IAmKings/ReleaseKite · 文档: [`docs/`](docs/) · 品牌资源: [`docs/brand/`](docs/brand/)
-AI agent skill: `npx skills add IAmKings/ReleaseKite --skill releasekite -g`（或见 [`skills/`](skills/README.md)）
-在线文档: https://iamkings.github.io/ReleaseKite/
+ReleaseKite 把「检查更新 → 更新弹窗 → 下载 → 校验 → 安装」这一整套流程封装成可复用库。
+版本源直接使用公开 GitHub Release，不需要自建更新服务：宿主 App 只需要按约定发布 APK
+和可选的更新元数据，再接入少量初始化代码。
 
-以 **GitHub Release 为版本源**的 Android 应用内更新库：检查更新、更新弹窗、下载进度、
-SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Beta 通道、灰度分桶、强制更新与
-下载线路/镜像回退。
+它源自 [ZhiBox](https://github.com/IAmKings/ZhiBox) 的更新模块（MIT），保留了其状态机、
+安全校验、后台下载、Beta/灰度/强制更新等行为，并拆成纯 JVM、Android、Compose 三层，
+可以按需使用。
 
-- 纯 JVM 领域层（`releasekite-core`）+ Android 适配层（`releasekite`）+ Compose UI
-  （`releasekite-compose`），可只用其中一层；
-- 全部行为从 [ZhiBox](https://github.com/IAmKings/ZhiBox) v0.1.17 的更新服务抽取并泛化，
-  保留其两轮第三方审查修复后的状态机与安全语义（详见 [`docs/MIGRATION_ZHIBOX.md`](docs/MIGRATION_ZHIBOX.md)）；
-- 无服务端、无遥测、无 token：仓库 public 即可用。
+## 为什么用它
 
-## 特性
-
-| 能力 | 说明 |
-|---|---|
-| 版本检查 | 冷启动自动检查（成功 24h / 失败 1h 节流）+ 手动检查（取消在途任务、绕过节流） |
-| 更新 UI | Material3 全局弹窗：版本/大小/日期/更新说明、下载进度、校验、失败原因、安装权限 |
-| 安全下载 | 仅 HTTPS、重定向逐跳 host 白名单、SHA-256（API digest / `.sha256` 回退）、`.part` 续传 |
-| 安装安全 | 包名 + `versionCode` 严格递增 + 签名证书一致校验；FileProvider + 系统安装器，无静默安装 |
-| 后台下载 | WorkManager 唯一任务、通知进度、进程被杀后续传、完成通知/回前台自动续装 |
-| Beta 通道 | GitHub prerelease（tag 含 `-`）+ semver 预发布排序；stable 永远看不到 Beta |
-| 灰度/强制 | Release 资产 `-update.json`（schema 1）：`rolloutPercent` 本地确定性分桶、`minSupportedVersion` 强制更新 |
-| 弱网可用 | 直连 GitHub CDN 失败时按镜像前缀回退；线路健康/冷却/自动换路 |
-| 可测试 | 94 个从 ZhiBox 迁移的用例 + 136 个新增，共 **230** 个自动化用例（core 119 / Android 36 / Compose 75），全部协作者可注入 |
-
-## 与 ZhiBox 的关系
-
-ReleaseKite 是 ZhiBox 更新模块的**可复用化抽取**（MIT License，见 [`NOTICE`](NOTICE)）：
-
-- 行为契约对齐 ZhiBox `docs/product/APP_UPDATE_SPEC.md`，实现对齐 v0.1.17；
-- 状态机、取消规则、节流/缓存 TTL、灰度/强制、线路回退、看门狗/代际等不变量逐条保留，
-  每个 ZhiBox 修复提交都能在 [`docs/MIGRATION_ZHIBOX.md`](docs/MIGRATION_ZHIBOX.md) 的
-  「提交 → 不变量 → ReleaseKite 测试」对照表中找到对应测试；
-- 泛化差异（配置化资产匹配、可选 checksum、core 无文案、可注入平台适配等）同样记录在该文档。
+- **零后端**：公开 GitHub Release 就是版本源，没有更新 API、数据库或额外运维。
+- **安全闭环**：HTTPS + host 白名单 → SHA-256 → 包名/versionCode/签名校验 → 系统安装器，
+  不做静默安装。
+- **后台与弱网**：WorkManager 唯一任务、通知、跨进程 `.part` 续传、镜像/线路回退。
+- **策略完整**：Beta 通道、灰度分桶、强制更新、缓存与失败逃生阈值。
+- **Compose 原生**：自带 `ReleaseKiteHost`、更新弹窗、设置行/设置区；也可以只使用
+  Android 适配层或纯 JVM core 自绘 UI。
 
 ## 5 分钟接入
+
+### 1. 添加依赖
 
 ```kotlin
 // settings.gradle.kts
 repositories {
-    google(); mavenCentral()
+    google()
+    mavenCentral()
     maven("https://jitpack.io")
 }
 
 // app/build.gradle.kts
-dependencies {
-    // JitPack 多模块坐标：com.github.IAmKings.ReleaseKite:<module>:v0.1.0
-    // Compose UI 模块（api 传递依赖会带入 releasekite 与 releasekite-core）
-    implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
-
-    // 宿主自己的 Compose 栈（库的公开 API 用 api 暴露了 compose-ui/ui-graphics；
-    // 宿主页面自身仍需 BOM/material3/activity-compose，版本按你的工程选择）
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.activity:activity-compose:1.13.0")
-}
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
+// 宿主自己的 Compose BOM/material3/activity-compose 照常声明
 ```
 
+`releasekite-compose` 会通过 `api` 带入 `releasekite` 和 `releasekite-core`。如果不需要
+Compose UI，只依赖 `releasekite` 即可；纯 JVM 场景使用 `releasekite-core`。
+
+### 2. 初始化
+
 ```kotlin
-// Application
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -83,238 +65,114 @@ class App : Application() {
             config = ReleaseKiteConfig(
                 repository = "your-name/your-app",
                 apkAssetPattern = Regex(""".*-release-signed\.apk$"""),
-                downloadMirrors = listOf("https://ghproxy.net/"), // 可选
+                metadataAssetSuffix = "-update.json", // 启用灰度/强制；不需要可置 null
+                // downloadMirrors = listOf("https://ghproxy.net/"), // 国内网络可选
             ),
         )
     }
 }
+```
 
-// Activity：挂在根 Box（全局弹窗 + 生命周期 + 通知权限）
+### 3. 挂载更新 UI
+
+```kotlin
 setContent {
     MaterialTheme {
         Box(Modifier.fillMaxSize()) {
             AppContent()
-            ReleaseKiteHost()
+            ReleaseKiteHost() // 全局弹窗 + 生命周期 + 通知权限
         }
     }
 }
 
-// 设置页（manager 来自 Application 中的 ReleaseKite.initialize，也可直接用 ReleaseKite.manager）
+// 设置页
 val manager = ReleaseKite.manager
-ReleaseKiteUpdateRow(manager = manager)          // 一行「检查更新」
-ReleaseKiteSettingsSection(manager = manager)    // 完整设置区（自动检查 / Beta / 线路状态）
+ReleaseKiteUpdateRow(manager = manager)        // 一行「检查更新」
+ReleaseKiteSettingsSection(manager = manager)  // 自动检查 / Beta / 线路状态
 ```
 
-完整步骤与注意事项见 [`docs/INTEGRATION.md`](docs/INTEGRATION.md)；`sample/` 是可运行示例。
+完整步骤、通知点击续装、FileProvider、R8 和常见问题见
+[接入指南](docs/INTEGRATION.md)。可运行示例在 [`sample/`](sample/)。
 
-后台下载完成后点击通知会打开宿主 launcher，并携带 boolean extra
-`io.github.releasekite.extra.INSTALL_UPDATE`（PendingIntent requestCode 4203）。宿主可选在入口
-读取该 extra 并调用 `ReleaseKite.manager.installDownloadedIfReady()` 主动续装；**不处理也不影响
-功能**，`ReleaseKiteHost` 的 `onAppResumed` 会自动兜底（通知被拒/不可见时同样生效）。
+## 模块
 
-## 配置表（`ReleaseKiteConfig`）
-
-| 参数 | 默认值 | 说明 |
+| 模块 | 内容 | 适用场景 |
 |---|---|---|
-| `repository` | —（必填） | `owner/repo`，必须匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$` |
-| `apkAssetPattern` | `.*\.apk$`（忽略大小写） | Release APK 资产匹配；必须恰好命中一个，否则 `IncompleteRelease` |
-| `checksumAssetSuffix` | `".sha256"` | 与 APK 同名前缀的校验资产后缀 |
-| `metadataAssetSuffix` | `"-update.json"` | 灰度/强制元数据资产后缀；`null` = 关闭 |
-| `requireChecksum` | `true` | 无 digest 且无 `.sha256` 时拒绝下载（`NoChecksum`） |
-| `downloadMirrors` | 空 | `https://` 且以 `/` 结尾的镜像前缀，直连失败时按序回退 |
-| `userAgent` | `"ReleaseKite"` | 库初始化时自动变为 `ReleaseKite/<版本> (<包名>)`；可覆盖 |
-| `downloadFilePrefix` | `"releasekite"` | 下载文件名前缀（非法字符替换为 `_`） |
-| `betaChannelEnabled` | `true` | 是否允许用户打开 Beta 通道 |
-| `autoCheckIntervalMs` | 24h | 自动检查成功后的节流间隔 |
-| `autoRetryIntervalMs` | 1h | 自动检查失败后的退避间隔 |
-| `forcedCacheMaxAgeMs` | 24h | 强制缓存过期后先联网校验 |
-| `cacheRevalidateIntervalMs` | 6h | 普通/灰度缓存重新校验间隔 |
-| `downloadTimeoutMs` | 5min | 单次下载整体超时（保留 `.part` 续传） |
-| `downloadStartTimeoutMs` | 20s | 下载启动看门狗（WorkManager 长时间 WAITING） |
-| `forcedEscapeFailures` | 3 | 强制更新下载连续失败多少次后允许「暂时退出」 |
+| `releasekite-compose` | Material3 更新弹窗、设置区、Host | 推荐；一步接入 UI |
+| `releasekite` | WorkManager 下载、安装、通知、存储 | 自绘 UI，只要 Android 适配 |
+| `releasekite-core` | 版本/策略/灰度/状态机/下载器 | 纯 JVM 或自建平台适配 |
 
-网络/安全实现细节见 [`docs/SECURITY.md`](docs/SECURITY.md)。
+## 发布一个更新
 
-## Release 资产契约
+宿主 App 的 GitHub Release 至少包含一个 APK；推荐同时提供 `.sha256`，需要灰度/强制时再加
+`-update.json`：
 
 ```text
-myapp-1.2.3-<sha7>-release-signed.apk          # 必需：唯一匹配 apkAssetPattern 的 APK
-myapp-1.2.3-<sha7>-release-signed.apk.sha256   # 推荐：sha256sum 格式
-myapp-1.2.3-<sha7>-update.json                 # 可选：灰度比例 / 强制下限（schema 1）
-myapp-1.2.3-<sha7>-mapping.txt                 # 可选：R8 mapping
+myapp-1.2.3-<sha7>-release-signed.apk
+myapp-1.2.3-<sha7>-release-signed.apk.sha256
+myapp-1.2.3-<sha7>-update.json        # 可选：灰度比例 / 强制下限
 ```
 
-- tag 必须等于 `v<versionName>`，`versionCode` 必须递增，签名证书必须与已安装应用一致；
-- `-update.json`：`{schema:1, versionName, tagName, channel, rolloutPercent, minSupportedVersion,
-  publishedAt, htmlUrl, apk{name,size,sha256}}`；不需要灰度/强制时可以不放 policy 文件，
-  发布模板会跳过元数据生成（warning），客户端按 100%/非强制处理；
-- 发布流水线模板：[`samples/github-workflows/release.yml`](samples/github-workflows/release.yml)
-  与 [`samples/release-policy.json`](samples/release-policy.json)；
-- 详细操作、Beta/灰度/强制与 CDN 缓存经验见 [`docs/RELEASE_PIPELINE.md`](docs/RELEASE_PIPELINE.md)。
-
-## 状态机与安全链（速览）
-
-| 阶段（`UpdatePhase`） | 可见 UI | 可取消 |
-|---|---|---|
-| `Idle` / `Checking` / `UpToDate` | 无弹窗；设置行内联状态 | — |
-| `Available`（普通） | 版本/大小/日期/说明 +「立即更新 / 稍后」 | ✅ |
-| `Available`（强制） | 无「稍后」，标题「需要更新」 | ❌ |
-| `RolloutPending` | 无弹窗；设置行「正在分批推送（N%）」 | — |
-| `Downloading` / `Verifying` | 进度/校验，无操作按钮 | ❌ |
-| `DownloadFailed` | 可读失败原因 +「重试」（强制态按逃生阈值） | ✅（强制态受限） |
-| `NeedInstallPermission` | 「去设置 / 取消」 | ✅ |
-
-安全链：HTTPS → 逐跳 host 白名单 → SHA-256 → 包名/versionCode/签名 → FileProvider →
-系统安装器（用户授权）。详见 [`docs/SECURITY.md`](docs/SECURITY.md)。
-
-## JitPack / GitHub Packages 坐标
-
-> 本仓库 JitPack 坐标：`com.github.IAmKings.ReleaseKite:<module>:<tag>`（tag 如 `v0.1.0`）；
-> 根工程本身不发布制品，不要依赖 `com.github.IAmKings:ReleaseKite`。
-
-```kotlin
-// JitPack：完整 UI（api 传递依赖带入 releasekite 与 releasekite-core）
-implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
-
-// 只要 Android 适配层（无 Compose UI）
-implementation("com.github.IAmKings.ReleaseKite:releasekite:v0.1.0")
-
-// 只要纯 JVM 引擎（自建平台适配/工具）
-implementation("com.github.IAmKings.ReleaseKite:releasekite-core:v0.1.0")
-
-// 本地 Maven 备选：先 ./gradlew publishToMavenLocal（artifact 版本为 0.1.0，不带 v）
-implementation("com.github.IAmKings.ReleaseKite:releasekite-core:0.1.0")
-implementation("com.github.IAmKings.ReleaseKite:releasekite:0.1.0")
-implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
-```
-
-### GitHub Packages（需要 token）
-
-仓库已内置 `.github/workflows/publish-github-packages.yml`：GitHub Release published 或手动
-`workflow_dispatch` 时，用 `GITHUB_TOKEN`（`packages: write`）把三个模块发布到 GitHub Packages。
-工作流先逐模块检查 POM 与 JAR/AAR：完整模块只验证，完全缺失的模块才发布。
-部分制品缺失的半成品版本会在任何上传前失败，需使用新版本；401/403/429/5xx 等探测错误也会终止，
-不会被误当作未发布。发布后再次验证全部六个制品。
-
-消费端需要带 `read:packages` 的 token：
-
-```kotlin
-// settings.gradle.kts
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/IAmKings/ReleaseKite")
-        credentials {
-            username = System.getenv("GITHUB_ACTOR")
-            password = System.getenv("GITHUB_TOKEN") // 需要 read:packages
-        }
-    }
-}
-
-// app/build.gradle.kts（GitHub Packages 使用 artifact 版本 0.1.0）
-implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:0.1.0")
-```
-
-> 不适合作为公开"零配置"渠道：消费者必须持有 GitHub token；公开分发优先用 JitPack。
-
-> **JitPack 构建**：仓库使用与 JitPack 一致的 group（`com.github.IAmKings.ReleaseKite`），
-> 推送 tag 后 JitPack 首次请求会自动构建；本地可用 `scripts/consumer-smoke.sh` 验证
-> mavenLocal 发布物。若未来发布到 Maven Central，可用
-> `-PGROUP=io.github.iamkings` 覆盖坐标（POM url/scm 已指向本仓库）。
-
-## 构建与测试
-
-本地需要 JDK 21（macOS 可用 Android Studio JBR）：
-
-```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-
-# 三个模块的单元测试（core 纯 JVM；android/compose 用 Robolectric）
-./gradlew :releasekite-core:test :releasekite:testDebugUnitTest :releasekite-compose:testDebugUnitTest
-
-# Debug 示例 + Release 门禁（AAR + sample R8/minify）+ lint
-./gradlew :sample:assembleDebug
-./gradlew :releasekite:assembleRelease :releasekite-compose:assembleRelease :sample:assembleRelease
-./gradlew :releasekite:lintDebug :releasekite-compose:lintDebug :sample:lintDebug
-./gradlew :releasekite:lintRelease :releasekite-compose:lintRelease :sample:lintRelease
-
-# 发布到本地 Maven（验证坐标）；再跑独立 consumer + R8 冒烟
-./gradlew publishToMavenLocal
-scripts/consumer-smoke.sh
-```
-
-CI 门禁见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：JDK 21 + wrapper 校验 +
-三模块单测 + Debug sample + Debug/Release lint + Release AAR/sample（R8）+ `publishToMavenLocal`，
-失败上传报告。测试矩阵与真机验收清单见 [`docs/TESTING.md`](docs/TESTING.md)。
-
-示例应用（`sample`）默认仓库为 `IAmKings/ZhiBox`：可以走通真实的检查/下载链路，但下载到的
-ZhiBox APK 会在包名/签名校验处被拒绝——这是**预期的安全拦截**（只允许升级应用自身）。
-示例通过 `metadataAssetSuffix = null` 关闭灰度/强制元数据，避免 `versionName=0.0.1` 命中
-真实仓库的 `minSupportedVersion` 而首启被强制弹窗锁死；真实接入请保留默认值。
-
-## FAQ
-
-| 问题 | 回答 |
-|---|---|
-| 为什么下载后提示「安装包无效/签名不一致」？ | 自更新只能安装**同签名**且 `versionCode` 更大的自身 APK；换签名/换包名/降级都会被拒绝 |
-| 为什么检查结果显示无 Release？ | 仓库必须 public；stable 通道不返回 prerelease；`repository` 需为 `owner/repo` |
-| 国内下载总是超时？ | 直连 GitHub CDN 不稳；配置 `downloadMirrors`（`https://` 且以 `/` 结尾） |
-| 通知不显示？ | Android 13+ 通知权限被拒；下载继续，回前台会自动续装 |
-| 通知点击后如何立刻安装？ | 读取 launcher intent 的 `io.github.releasekite.extra.INSTALL_UPDATE` extra 后调 `ReleaseKite.manager.installDownloadedIfReady()`；不处理时 `ReleaseKiteHost` 也会在回到前台时自动续装 |
-| 为什么冷启动不立即检查？ | 设计节流：成功后 24h、失败后 1h；手动检查始终可用 |
-| 灰度版本为什么没有弹窗？ | 本机未命中分桶（`RolloutPending`）；0%/100% 是可验证边界 |
-| 能上架 Google Play 吗？ | `REQUEST_INSTALL_PACKAGES` 有商店政策限制，Play 分发应改用 Play In-App Updates，见 `docs/SECURITY.md` |
-
-更多问题见 [`docs/INTEGRATION.md`](docs/INTEGRATION.md) §8。
-
-## English Quick Start
-
-ReleaseKite is a reusable Android in-app update library backed by GitHub Releases
-(extracted from ZhiBox, MIT). Requirements: minSdk 24, compileSdk 36, Kotlin 2.4.x, JDK 17+.
-
-```kotlin
-// 1) Repositories
-maven("https://jitpack.io")
-
-// 2) Dependencies (JitPack multi-module coordinate; replace <owner>/<version>)
-implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
-// Host app's own Compose stack (library exposes compose-ui/ui-graphics via api)
-implementation(platform("androidx.compose:compose-bom:2026.06.01"))
-implementation("androidx.compose.ui:ui")
-implementation("androidx.compose.material3:material3")
-implementation("androidx.activity:activity-compose:1.13.0")
-
-// 3) Application.onCreated
-ReleaseKite.initialize(
-    context = this,
-    config = ReleaseKiteConfig(
-        repository = "your-name/your-app",
-        apkAssetPattern = Regex(""".*-release-signed\.apk$"""),
-    ),
-)
-
-// 4) Root layout
-setContent { MaterialTheme { Box(Modifier.fillMaxSize()) { AppContent(); ReleaseKiteHost() } } }
-```
-
-Publish releases with tags `v<versionName>` and assets
-`<app>-<version>-<sha7>-release-signed.apk` (+ `.sha256`, optional `-update.json`).
-See [`docs/INTEGRATION.md`](docs/INTEGRATION.md), [`docs/RELEASE_PIPELINE.md`](docs/RELEASE_PIPELINE.md)
-and [`docs/SECURITY.md`](docs/SECURITY.md).
+约定：tag 为 `v<versionName>`，`versionCode` 递增，签名证书与已安装应用一致。
+发布模板、Beta/灰度/强制操作和发布后自检见 [发布与资产](docs/RELEASE_PIPELINE.md)。
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | 冻结 API 契约（实现与文档的唯一事实源） |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 模块边界、接口、数据流、状态机、线程模型、为何 core 是纯 JVM |
-| [`docs/INTEGRATION.md`](docs/INTEGRATION.md) | 5 分钟接入、通知/FileProvider/WorkManager/备份/R8、FAQ |
-| [`docs/RELEASE_PIPELINE.md`](docs/RELEASE_PIPELINE.md) | 资产命名、`-update.json`、tag 校验、Beta/灰度/强制、CDN 与镜像 |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | 威胁模型、HTTPS/白名单/SHA/签名、隐私、商店合规 |
-| [`docs/MIGRATION_ZHIBOX.md`](docs/MIGRATION_ZHIBOX.md) | ZhiBox 提交 → 不变量 → ReleaseKite 测试对照、文件映射、有意差异 |
-| [`docs/TESTING.md`](docs/TESTING.md) | 自动化矩阵、门禁命令、真机验收清单 |
-| [`skills/`](skills/README.md) | AI skill：支持 `npx skills add`；接入、使用、发布、维护与排障的任务路由/安装方式 |
-| [在线文档](https://iamkings.github.io/ReleaseKite/) | MkDocs 文档站（GitHub Pages）：首页、接入、API、发布、架构、安全、测试 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
+| [在线文档](https://iamkings.github.io/ReleaseKite/) | 文档站首页（GitHub Pages，支持搜索/深色模式） |
+| [接入指南](docs/INTEGRATION.md) | 依赖、初始化、UI、权限、FileProvider、R8、FAQ |
+| [API 参考](docs/API_CONTRACT.md) | 冻结 API 契约（实现与文档的唯一事实源） |
+| [发布与资产](docs/RELEASE_PIPELINE.md) | 资产命名、Actions 模板、Beta/灰度/强制、镜像 |
+| [架构](docs/ARCHITECTURE.md) / [安全](docs/SECURITY.md) | 模块边界、状态机、安全链、商店合规 |
+| [测试与验收](docs/TESTING.md) | 自动化矩阵、门禁命令、真机验收清单 |
+| [从 ZhiBox 迁移](docs/MIGRATION_ZHIBOX.md) | 行为对照与迁移不变量 |
+
+## 构建与测试
+
+需要 JDK 21 和 Android SDK（compileSdk 36）：
+
+```bash
+# 三个模块单测
+./gradlew :releasekite-core:test :releasekite:testDebugUnitTest :releasekite-compose:testDebugUnitTest
+
+# Debug 示例 + Release 门禁 + lint
+./gradlew :sample:assembleDebug
+./gradlew :releasekite:assembleRelease :releasekite-compose:assembleRelease :sample:assembleRelease
+./gradlew :releasekite:lintDebug :releasekite-compose:lintDebug :sample:lintDebug \
+          :releasekite:lintRelease :releasekite-compose:lintRelease :sample:lintRelease
+```
+
+完整门禁（含 `publishToMavenLocal` 和独立 consumer R8 冒烟）见
+[`docs/TESTING.md`](docs/TESTING.md) 与 [CI workflow](.github/workflows/ci.yml)。
+
+示例应用（`sample`）默认关闭灰度/强制元数据，避免 `versionName=0.0.1` 被真实仓库的
+`minSupportedVersion` 锁死；真实接入请保留 `metadataAssetSuffix = "-update.json"`。
+
+## AI / 自动化
+
+仓库提供可安装的 AI skill，覆盖接入、API 使用、发布流程、维护与排障：
+
+```bash
+npx skills add IAmKings/ReleaseKite --skill releasekite -g
+```
+
+也可以直接阅读 [`skills/releasekite/SKILL.md`](skills/releasekite/SKILL.md)；安装与离线
+fallback 见 [`skills/README.md`](skills/README.md)。
+
+## English
+
+ReleaseKite is a reusable in-app update library for Android/Jetpack Compose backed by
+GitHub Releases (extracted from ZhiBox, MIT). It handles release checks, update UI,
+background downloads, SHA-256/signature validation, installation and optional staged
+rollout/forced updates without a backend.
+
+```kotlin
+implementation("com.github.IAmKings.ReleaseKite:releasekite-compose:v0.1.0")
+```
+
+See the [documentation site](https://iamkings.github.io/ReleaseKite/),
+[integration guide](docs/INTEGRATION.md) and [release pipeline](docs/RELEASE_PIPELINE.md).
 
 ## License
 
