@@ -67,25 +67,37 @@
 
 本轮针对任务调度和 Host 生命周期验收，未重复前次同签名覆盖升级、完整下载或跨设备/跨网络验收；仍不代替完整发布放行清单。
 
-## 第三轮：移动网络真机放行矩阵（PJZ110 / Android 17）
+## 第三轮：双设备真机放行矩阵（K60U / Wi‑Fi + PJZ110 / 移动网络）
 
+设备 A：小米 K60U（23078PND5G），Android 14，Wi‑Fi；本轮重新连接后执行主链路
+（真实检查/下载/Wi‑Fi 中断后 force-stop 续传/安全拦截/同签名安装）。
 设备 B：OnePlus PJZ110，Android 17（SDK 37），中国广电移动网络（Wi‑Fi 关闭，VPN FlyShadow
-开启），安装 sample debug 0.0.1；与历史设备 A（小米 K60U / Android 14 / Wi‑Fi）合并覆盖矩阵。
-本轮没有修改设备上已有其它应用的数据；sample 通过 `adb install -r` 更新。
+开启）。两台设备均安装 sample debug 0.0.1 后开始；本轮没有修改设备上其它应用的数据。
+临时验收入口/0.0.2 APK 只在 `/tmp` 独立工程构建，不进入仓库；验收后两台设备均已卸载测试包
+并恢复普通 sample 0.0.1。
 
-| 矩阵项 | A：K60U / Android 14 / Wi‑Fi（历史记录） | B：PJZ110 / Android 17 / 移动网络（本轮） |
+| 矩阵项 | A：K60U / Android 14 / Wi‑Fi（本轮） | B：PJZ110 / Android 17 / 移动网络（本轮） |
 |---|---|---|
-| 真实 GitHub 检查 / 弹窗 | ✅ 0.1.17 更新框 | ✅ 0.1.17，版本/67.2MB/更新时间/说明正确；sample 关闭 metadata，弹窗可「稍后」关闭 |
-| 通知权限拒绝后继续下载 | ✅ | ✅ 拒绝通知权限；下载继续，WorkManager 前台服务 ID 4201 启动，进度到 27%+ 并完成 |
-| 后台下载 / Home | ✅ | ✅ Home 后 WorkManager 继续，worker 以 SUCCESS 结束 |
-| 跨进程 `.part` 续传 | ✅ force-stop 后续传 | ✅ 禁用移动数据后 `.part`=14,994,560 B；force-stop；恢复网络重开进程后同一 `.part` 保留，重试从 15.4MB 继续到 45.7MB 并完成 |
-| SHA-256 / 包名 / 签名拦截 | ✅ 镜像下载 + SHA 通过、release 签名同包安装成功 | ✅ 真实 ZhiBox APK 被 `AndroidApkValidator` 以「安装包无效或签名不一致」拒绝，未进入安装器 |
+| 真实 GitHub 检查 / 弹窗 | ✅ 0.1.17，版本/67.2MB/说明正确 | ✅ 0.1.17，版本/67.2MB/更新时间/说明正确；弹窗可「稍后」关闭 |
+| 通知权限拒绝后继续下载 | ✅（历史记录；本轮 MIUI 自动授予通知权限，未重复拒绝路径） | ✅ 拒绝通知权限；下载继续，WorkManager 前台服务 ID 4201 启动，进度到 27%+ 并完成 |
+| 后台下载 / Home | ✅（历史记录） | ✅ Home 后 WorkManager 继续，worker 以 SUCCESS 结束 |
+| 跨进程 `.part` 续传 | ✅ Wi‑Fi 中断时 `.part`=34,797,731 B；force-stop；恢复 Wi‑Fi 重开后同一 `.part` 保留并从 34.8MB 续到完成 | ✅ 禁用移动数据后 `.part`=14,994,560 B；force-stop；恢复网络重开进程后同一 `.part` 保留，重试从 15.4MB 继续到 45.7MB 并完成 |
+| SHA-256 / 包名 / 签名拦截 | ✅ 真实 ZhiBox APK 被拒绝：「安装包无效或签名不一致」 | ✅ 同左，未进入安装器 |
 | Android 17 通知拒绝 + FGS | — | ✅ 通知拒绝下 FGS `dataSync` 启动、下载不崩；完成后回前台可重试/续装路径正常 |
-| 未知来源权限 / 系统安装器 / 同签名覆盖升级 | ✅ 0.1.6→0.1.7、0.1.7→0.1.8 真机安装，数据保留 | ✅ 真实 `AndroidApkValidator` 校验 0.0.2 通过；真实 `AndroidUpdateInstaller` 经 FileProvider 拉起系统安装器；授权未知来源并经 OPPO 风险确认后 0.0.1→0.0.2（versionCode 2）安装成功，私有 files 标记保留 |
-| Beta / 灰度 0%、100% / 强制 / 镜像回退 | 未在真实发布仓库演练（需临时 Release/policy） | 未演练（需真实发布仓库；逻辑由 230 自动化用例覆盖） |
+| 未知来源权限 / 系统安装器 / 同签名覆盖升级 | ✅ 真实 `AndroidApkValidator` 校验 0.0.2 通过；真实 Installer 经 FileProvider 拉起 MIUI 安装器；0.0.1→0.0.2（versionCode 2）安装成功，私有 files 标记保留 | ✅ 真实 Validator 校验 0.0.2 通过；真实 Installer 经 FileProvider 拉起安装器；OPPO 风险确认后 0.0.1→0.0.2（versionCode 2）安装成功，私有 files 标记保留 |
+| Beta / 灰度 0%、100% / 强制 / 镜像回退 | ✅ 真实 ZhiBox `update.json`（`minSupportedVersion=0.1.0`）强制演练：标题「需要更新」、无「稍后」、返回键/点外部均不关闭；force-stop 重启后仍强制（缓存 forced）。Beta/灰度 0%、100% 与 APK 镜像未演练 | 未演练（需真实发布仓库；逻辑由 230 自动化用例覆盖） |
 | 0 P0 | ✅ | ✅ 本轮未发现 P0 |
 
-证据（B 设备）：
+证据（A 设备，本轮）：
+- [检查弹窗](device-matrix-2026-10-30/k60u-01-check-dialog.png)
+- [Wi‑Fi 断开后保留 `.part`（更新失败态）](device-matrix-2026-10-30/k60u-02-download-paused.png)
+- [重开后从 34.8MB 续传](device-matrix-2026-10-30/k60u-03-resumed.png)
+- [签名/包名拦截](device-matrix-2026-10-30/k60u-04-signature-rejected.png)
+- [同签名升级到 0.0.2](device-matrix-2026-10-30/k60u-05-installed-0.0.2.png)
+- [真实 update.json 强制更新](device-matrix-2026-10-30/k60u-06-forced-dialog.png)
+- [强制更新 force-stop 重启后仍强制](device-matrix-2026-10-30/k60u-07-forced-after-restart.png)
+
+证据（B 设备，本轮）：
 - [检查弹窗](device-matrix-2026-10-30/pjz110-01-check-dialog.png)
 - [通知拒绝后下载中](device-matrix-2026-10-30/pjz110-02-downloading-notif-denied.png)
 - [签名/包名拦截](device-matrix-2026-10-30/pjz110-03-signature-rejected.png)
@@ -93,9 +105,10 @@
 - [重开进程后续传](device-matrix-2026-10-30/pjz110-06-resumed.png)
 - [同签名升级安装完成](device-matrix-2026-10-30/pjz110-07-install-complete.png)
 
-边界：本轮在 B 上已覆盖「检查 → 弹窗 → 权限拒绝 → 下载 → 后台 → force-stop/续传 →
-安全拦截 → 同签名系统安装」，安装正向使用临时验收 Activity + 本地 0.0.2 APK（库真实
-`AndroidApkValidator`/`AndroidUpdateInstaller`/FileProvider），临时入口与 APK 仅在独立临时
-工程中构建，未写入仓库；验收后已卸载并恢复普通 sample 0.0.1。Beta/灰度/强制/镜像的发布侧
-演练仍需单独测试仓库与 Release policy。移动网络下载 67.2MB 属真实验收数据消耗；设备网络/VPN
-环境仅代表当前一次实测，不等价于所有运营商/受限网络组合。
+边界：A/B 均已覆盖「检查 → 弹窗 → 下载 → force-stop/续传 → 安全拦截 → 同签名系统安装」；
+A 另用真实 ZhiBox `update.json`（镜像回退）完成强制更新演练（不可取消 + 重启后仍强制），
+历史记录另有通知拒绝/后台/0.1.x 升级链；B 本轮覆盖 Android 17 通知拒绝与 FGS。Beta/灰度
+0%/100% 与 APK 镜像的发布侧演练仍需单独测试仓库与 Release policy。同签名安装正向使用临时
+验收 Activity + 本地 0.0.2 APK（库真实 `AndroidApkValidator`/`AndroidUpdateInstaller`/FileProvider），
+临时入口与 APK 未写入仓库。移动网络下载 67.2MB 属真实验收数据消耗；设备网络/VPN 环境仅代表
+当前一次实测，不等价于所有运营商/受限网络组合。
