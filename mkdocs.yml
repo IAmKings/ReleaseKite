@@ -1,0 +1,77 @@
+site_name: ReleaseKite
+site_description: GitHub Release-backed in-app update library for Android / Jetpack Compose.
+site_url: https://iamkings.github.io/ReleaseKite/
+repo_url: https://github.com/IAmKings/ReleaseKite
+repo_name: IAmKings/ReleaseKite
+
+docs_dir: docs
+site_dir: site
+use_directory_urls: false
+
+theme:
+  name: material
+  language: zh
+  logo: brand/releasekite-mark.svg
+  favicon: brand/releasekite-mark.svg
+  font: false
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.select
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+nav:
+  - 首页: index.md
+  - 接入指南: INTEGRATION.md
+  - API 参考: API_CONTRACT.md
+  - 发布与资产: RELEASE_PIPELINE.md
+  - 架构: ARCHITECTURE.md
+  - 安全: SECURITY.md
+  - 测试与验收: TESTING.md
+  - 从 ZhiBox 迁移: MIGRATION_ZHIBOX.md
+  - 验收记录: ACCEPTANCE_2026-10-30.md
+  - 品牌资源: brand/README.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+extra_css:
+  - stylesheets/extra.css
+
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 ReleaseKite contributors · MIT

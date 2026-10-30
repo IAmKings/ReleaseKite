@@ -1,0 +1,82 @@
+/* ReleaseKite documentation site — small brand layer on top of Material. */
+
+:root {
+  --md-primary-fg-color: #2f6fed;
+  --md-primary-fg-color--light: #5b8ef5;
+  --md-primary-fg-color--dark: #1f54c4;
+  --md-accent-fg-color: #2f6fed;
+  --rk-ink: #0b1b33;
+  --rk-muted: #62708a;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0b1220;
+  --md-default-fg-color: #e8edf8;
+  --md-default-fg-color--light: #b8c4d9;
+  --md-primary-fg-color: #5b8ef5;
+  --md-accent-fg-color: #8fb2ff;
+  --rk-ink: #f5f7ff;
+  --rk-muted: #8fa1c0;
+}
+
+.rk-hero {
+  padding: 2.2rem 1rem 1.2rem;
+  text-align: center;
+}
+
+.rk-hero-mark {
+  width: 104px;
+  height: 104px;
+  margin: 0 auto;
+}
+
+.rk-hero h1 {
+  margin: 0.2rem 0 0.35rem;
+  font-size: clamp(2.6rem, 6vw, 4rem);
+  letter-spacing: -0.04em;
+  color: var(--rk-ink);
+}
+
+.rk-tagline {
+  margin: 0 auto 1.2rem;
+  max-width: 46rem;
+  color: var(--rk-muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.rk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem;
+  margin: 1rem 0 0.7rem;
+}
+
+.rk-meta {
+  color: var(--rk-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+/* Make the landing page cards feel like a product page, not a doc index. */
+.grid.cards > ul > li {
+  border-radius: 0.9rem;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.grid.cards > ul > li:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgb(11 27 51 / 10%);
+}
+
+@media screen and (max-width: 44.984375em) {
+  .rk-hero {
+    padding-top: 1.2rem;
+  }
+
+  .rk-actions .md-button {
+    width: 100%;
+    text-align: center;
+  }
+}

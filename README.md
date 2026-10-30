@@ -13,6 +13,7 @@
 
 仓库: https://github.com/IAmKings/ReleaseKite · 文档: [`docs/`](docs/) · 品牌资源: [`docs/brand/`](docs/brand/)
 AI agent skill: `npx skills add IAmKings/ReleaseKite --skill releasekite -g`（或见 [`skills/`](skills/README.md)）
+在线文档: https://iamkings.github.io/ReleaseKite/
 
 以 **GitHub Release 为版本源**的 Android 应用内更新库：检查更新、更新弹窗、下载进度、
 SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Beta 通道、灰度分桶、强制更新与
@@ -308,6 +309,7 @@ and [`docs/SECURITY.md`](docs/SECURITY.md).
 | [`docs/MIGRATION_ZHIBOX.md`](docs/MIGRATION_ZHIBOX.md) | ZhiBox 提交 → 不变量 → ReleaseKite 测试对照、文件映射、有意差异 |
 | [`docs/TESTING.md`](docs/TESTING.md) | 自动化矩阵、门禁命令、真机验收清单 |
 | [`skills/`](skills/README.md) | AI skill：支持 `npx skills add`；接入、使用、发布、维护与排障的任务路由/安装方式 |
+| [在线文档](https://iamkings.github.io/ReleaseKite/) | MkDocs 文档站（GitHub Pages）：首页、接入、API、发布、架构、安全、测试 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
 
 ## License

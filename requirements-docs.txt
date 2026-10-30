@@ -1,0 +1,4 @@
+# Documentation site build dependencies.
+# Keep these pinned so local preview, CI and Pages builds are reproducible.
+mkdocs==1.6.1
+mkdocs-material==9.8.0

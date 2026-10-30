@@ -13,7 +13,8 @@
 - `scripts/install-skills.sh`：把 canonical skill 安装到 `~/.agents/skills` /
   `~/.claude/skills`（symlink 或 copy）；
 - `scripts/test-skills.py` + CI 校验：frontmatter、必备章节、相对链接、secrets/本机路径；
-- `AGENTS.md`：仓库内 agent 的 skill 入口指针；README 文档表增加 skills 链接。
+- `AGENTS.md`：仓库内 agent 的 skill 入口指针；README 文档表增加 skills 链接；
+- GitHub Pages 文档站：MkDocs Material 首页 + 现有 docs/API 渲染 + GitHub Actions Pages 部署。
 
 ## [0.1.0] - 2026-10-30
 
