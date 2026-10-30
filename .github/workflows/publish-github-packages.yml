@@ -43,7 +43,32 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       # publishing.gradle.kts 仅在 GITHUB_ACTOR/GITHUB_TOKEN 存在时注册 GitHub Packages 仓库。
+      - name: Check whether this version is already published
+        id: existing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -1)"
+          GROUP="$(sed -n 's/^GROUP=//p' gradle.properties | head -1)"
+          GROUP_PATH="${GROUP//./\/}"
+          BASE="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/${GROUP_PATH}"
+          published=1
+          for module in releasekite-core releasekite releasekite-compose; do
+            url="${BASE}/${module}/${VERSION}/${module}-${VERSION}.pom"
+            code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" "$url")"
+            echo "$code $url"
+            [ "$code" = "200" ] || published=0
+          done
+          echo "published=${published}" >> "$GITHUB_OUTPUT"
+          if [ "$published" = "1" ]; then
+            echo "Version ${VERSION} already published; skip immutable re-publish, verify only."
+          fi
+
       - name: Publish to GitHub Packages
+        if: steps.existing.outputs.published != '1'
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,7 +80,7 @@ jobs:
             :releasekite-compose:publish
 
       # 用同仓库 GITHUB_TOKEN（packages: write 含读权限）验证包真实可下载，
-      # 防止“Gradle publish 成功但制品不可见”的假绿。
+      # 防止“Gradle publish 成功但制品不可见”的假绿；已发布版本可重复验证。
       - name: Verify package artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
