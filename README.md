@@ -1,7 +1,17 @@
 # ReleaseKite
 
-[![Release](https://jitpack.io/v/IAmKings/ReleaseKite.svg)](https://jitpack.io/#IAmKings/ReleaseKite)
-仓库: https://github.com/IAmKings/ReleaseKite · 文档: [`docs/`](docs/)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/releasekite-logo-dark-1024.png">
+    <img src="docs/brand/releasekite-logo-1024.png" alt="ReleaseKite" width="440">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://jitpack.io/#IAmKings/ReleaseKite"><img src="https://jitpack.io/v/IAmKings/ReleaseKite.svg" alt="Release"></a>
+</p>
+
+仓库: https://github.com/IAmKings/ReleaseKite · 文档: [`docs/`](docs/) · 品牌资源: [`docs/brand/`](docs/brand/)
 
 以 **GitHub Release 为版本源**的 Android 应用内更新库：检查更新、更新弹窗、下载进度、
 SHA-256 + 签名校验、系统安装器闭环，支持后台下载/通知、Beta 通道、灰度分桶、强制更新与

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ReleaseKite brand mark.
+  Source of truth: sample/src/main/res/drawable/ic_launcher_sample.xml
+  (same geometry as the sample launcher icon, normalized to a square SVG).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512"
+     role="img" aria-label="ReleaseKite">
+  <title>ReleaseKite</title>
+  <path fill="#2F6FED" d="M54,12 L88,42 L88,66 L54,96 L20,66 L20,42 Z" />
+  <path fill="#FFFFFF" d="M50,30 L58,30 L58,58 L70,46 L76,52 L54,74 L32,52 L38,46 L50,58 Z" />
+  <path fill="#FFFFFF" d="M38,80 L70,80 L70,86 L38,86 Z" />
+</svg>

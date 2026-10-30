@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ReleaseKite primary logo lockup: mark + wordmark, transparent background. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 108" width="880" height="216"
+     role="img" aria-label="ReleaseKite logo">
+  <title>ReleaseKite</title>
+  <g transform="translate(0,0)">
+    <path fill="#2F6FED" d="M54,12 L88,42 L88,66 L54,96 L20,66 L20,42 Z" />
+    <path fill="#FFFFFF" d="M50,30 L58,30 L58,58 L70,46 L76,52 L54,74 L32,52 L38,46 L50,58 Z" />
+    <path fill="#FFFFFF" d="M38,80 L70,80 L70,86 L38,86 Z" />
+  </g>
+  <text x="112" y="58" font-family="Inter, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="38" font-weight="700" letter-spacing="-0.5" fill="#0B1B33">ReleaseKite</text>
+  <text x="113" y="82" font-family="Inter, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="13" font-weight="500" letter-spacing="1.6" fill="#62708A">GITHUB RELEASE UPDATER</text>
+</svg>
